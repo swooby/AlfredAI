@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">AlfredAI</string>
+    <string name="title_activity_main">AlfredAI</string>
+    <string name="hello_world">From the Square world,\nHello, %1$s!</string>
+</resources>
