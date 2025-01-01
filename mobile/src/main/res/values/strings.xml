@@ -2,4 +2,8 @@
     <string name="app_name">AlfredAI</string>
     <string name="title_activity_main">AlfredAI</string>
     <string name="hello_world">From the Square world,\nHello, %1$s!</string>
+    <string name="microphone_permission_granted">Microphone permission granted</string>
+    <string name="microphone_permission_not_granted">Microphone permission not granted</string>
+    <string name="request_microphone_permission">Request Microphone Permission</string>
+    <string name="title_activity_push_to_talk">PushToTalkActivity</string>
 </resources>

@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlinx.serialization)
 }
 
 android {
@@ -20,8 +21,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         val localProperties = gradleLocalProperties(rootDir, providers)
-        val openApiKey = localProperties.getProperty("OPENAI_API_KEY")
-        buildConfigField("String", "OPENAI_API_KEY", openApiKey)
+        val dangerousOpenApiKey = localProperties.getProperty("DANGEROUS_OPENAI_API_KEY")
+        buildConfigField("String", "DANGEROUS_OPENAI_API_KEY", dangerousOpenApiKey)
     }
 
     buildTypes {
@@ -69,4 +70,14 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+
+    implementation(libs.androidx.constraintlayout.compose)
+
+    implementation(libs.kotlinx.serialization.json)
+
+    implementation(platform(libs.okhttp.bom))
+    implementation(libs.okhttp)
+    implementation(libs.logging.interceptor)
+
+    implementation(libs.webrtc.sdk.android)
 }
