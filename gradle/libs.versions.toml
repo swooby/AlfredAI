@@ -1,6 +1,7 @@
 [versions]
 agp = "8.7.3"
 constraintlayoutCompose = "1.1.0"
+firebaseBom = "33.7.0"
 webrtcSdkAndroid = "125.6422.06.1"
 kotlin = "2.0.20"
 kotlinxSerialization = "2.1.0"
@@ -34,6 +35,7 @@ lifecycleRuntimeKtx = "2.8.7"
 
 [libraries]
 androidx-constraintlayout-compose = { module = "androidx.constraintlayout:constraintlayout-compose", version.ref = "constraintlayoutCompose" }
+firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 webrtc-sdk-android = { module = "io.github.webrtc-sdk:android", version.ref = "webrtcSdkAndroid" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }

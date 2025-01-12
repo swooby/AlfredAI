@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlinx.serialization)
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -35,11 +36,11 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "21"
     }
     buildFeatures {
         buildConfig = true
@@ -73,11 +74,13 @@ dependencies {
 
     implementation(libs.androidx.constraintlayout.compose)
 
-    implementation(libs.kotlinx.serialization.json)
+    implementation(platform(libs.firebase.bom))
 
     implementation(platform(libs.okhttp.bom))
     implementation(libs.okhttp)
     implementation(libs.logging.interceptor)
 
     implementation(libs.webrtc.sdk.android)
+
+    implementation(project(":openai-kotlin-client"))
 }

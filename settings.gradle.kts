@@ -11,6 +11,7 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
@@ -23,3 +24,5 @@ rootProject.name = "AlfredAI"
 include(":mobile")
 include(":wear")
 include(":common")
+include(":openai-kotlin-client")
+project(":openai-kotlin-client").projectDir = file("openai-openapi/openai-kotlin-client")

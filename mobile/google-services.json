@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "622247427435",
+    "project_id": "alfred-ai-oicu812",
+    "storage_bucket": "alfred-ai-oicu812.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:622247427435:android:3981b7c2d5c403cb40a02e",
+        "android_client_info": {
+          "package_name": "com.swooby.alfredai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCxreI5hUXoNUOdqjhVZKMcPJLMzB4IrbA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

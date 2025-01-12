@@ -26,11 +26,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.constraintlayout.compose.ConstraintLayout
-import com.swooby.alfredai.openai.realtime.RealtimeAPI
-import com.swooby.alfredai.openai.realtime.SessionConfig
-import com.swooby.alfredai.openai.realtime.SessionModel
-import com.swooby.alfredai.openai.realtime.SessionTurnDetection
-import com.swooby.alfredai.openai.realtime.SessionVoice
+import com.openai.apis.RealtimeApi
+import com.openai.infrastructure.ApiClient
+import com.openai.models.RealtimeSessionCreateRequest
+import com.openai.models.RealtimeSessionCreateRequestTurnDetection
+import com.swooby.alfredai.openai.realtime.RealtimeClient
 import com.swooby.alfredai.ui.theme.AlfredAITheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

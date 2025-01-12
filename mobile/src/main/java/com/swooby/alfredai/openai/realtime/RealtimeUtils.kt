@@ -1,10 +1,13 @@
 package com.swooby.alfredai.openai.realtime
 
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
-
 object RealtimeUtils {
-    fun generateId(prefix: String, length: Int = 21): String {
+    /**
+     * Generates an id to send with events and messages
+     * @param prefix The prefix to use
+     * @param length The length of the id to generate, including the prefix
+     * @return The generated id with the given prefix and length
+     */
+    fun generateId(prefix: String = "evt_", length: Int = 21): String {
         val chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
         require(prefix.length <= length) {
             "Prefix length cannot exceed the total length."
@@ -18,13 +21,27 @@ object RealtimeUtils {
         return prefix + randomStr
     }
 
-//    fun mergeAll(vararg objects: JsonObject): JsonObject {
-//        return buildJsonObject {
-//            objects.forEach { jsonObj ->
-//                jsonObj.forEach { (key, value) ->
-//                    put(key, value)
-//                }
-//            }
-//        }
-//    }
+    fun quote(value: Any?, typeOnly: Boolean = false): String {
+        if (value == null) {
+            return "null"
+        }
+
+        if (typeOnly) {
+            return getShortClassName(value)!!
+        }
+
+        if (value is String) {
+            return "\"$value\""
+        }
+
+        if (value is CharSequence) {
+            return "\"$value\""
+        }
+
+        return value.toString()
+    }
+
+    fun getShortClassName(value: Any?): String? {
+        return value?.javaClass?.simpleName
+    }
 }
