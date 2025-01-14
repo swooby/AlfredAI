@@ -1,5 +1,6 @@
 package com.swooby.alfredai
 
+import android.content.Context
 import android.media.MediaPlayer
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -33,36 +34,42 @@ enum class PTTState {
     Pressed
 }
 
+fun provideHapticFeedback(context: Context) {
+    val vibrator = context.getSystemService(VibratorManager::class.java)
+        ?.defaultVibrator ?: context.getSystemService(Vibrator::class.java)
+    vibrator?.vibrate(
+        VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE)
+    )
+}
+
+fun provideAudibleFeedback(context: Context, pttState: PTTState) {
+    val resId = when (pttState) {
+        PTTState.Idle -> R.raw.quindar_nasa_apollo_outro
+        PTTState.Pressed -> R.raw.quindar_nasa_apollo_intro
+    }
+    val mediaPlayer = MediaPlayer.create(context, resId)
+    mediaPlayer.start()
+    mediaPlayer.setOnCompletionListener {
+        it.release()
+    }
+}
+
 @Composable
 fun PushToTalkButton(
     modifier: Modifier = Modifier,
     iconIdle: Int = R.drawable.outline_mic_24,
     iconPressed: Int = R.drawable.outline_mic_24,
-    onPushToTalkStart: () -> Unit = { Log.d("PTT", "Push-to-Talk Start") },
-    onPushToTalkStop: () -> Unit = { Log.d("PTT", "Push-to-Talk Stop") }
+    onPushToTalkStart: (pttState: PTTState) -> Boolean = {
+        Log.d("PTT", "Push-to-Talk Start")
+        false
+    },
+    onPushToTalkStop: (pttState: PTTState) -> Boolean = {
+        Log.d("PTT", "Push-to-Talk Stop")
+        false
+    }
 ) {
     var pttState by remember { mutableStateOf(PTTState.Idle) }
     val context = LocalContext.current
-    val vibrator = context.getSystemService(VibratorManager::class.java)
-        ?.defaultVibrator ?: context.getSystemService(Vibrator::class.java)
-
-    fun provideHapticFeedback() {
-        vibrator?.vibrate(
-            VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE)
-        )
-    }
-
-    fun provideAudibleFeedback() {
-        val resId = when (pttState) {
-            PTTState.Idle -> R.raw.quindar_nasa_apollo_outro
-            PTTState.Pressed -> R.raw.quindar_nasa_apollo_intro
-        }
-        val mediaPlayer = MediaPlayer.create(context, resId)
-        mediaPlayer.start()
-        mediaPlayer.setOnCompletionListener {
-            it.release()
-        }
-    }
 
     Box(
         contentAlignment = Alignment.Center,
@@ -78,18 +85,20 @@ fun PushToTalkButton(
                     awaitFirstDown()
                     if (pttState == PTTState.Idle) {
                         pttState = PTTState.Pressed
-                        onPushToTalkStart()
-                        provideHapticFeedback()
-                        provideAudibleFeedback()
+                        if (!onPushToTalkStart(pttState)) {
+                            provideHapticFeedback(context)
+                            provideAudibleFeedback(context, pttState)
+                        }
                     }
                     do {
                         val event = awaitPointerEvent()
                     } while (event.changes.any { !it.changedToUp() })
                     if (pttState == PTTState.Pressed) {
                         pttState = PTTState.Idle
-                        onPushToTalkStop()
-                        provideHapticFeedback()
-                        provideAudibleFeedback()
+                        if (!onPushToTalkStop(pttState)) {
+                            provideHapticFeedback(context)
+                            provideAudibleFeedback(context, pttState)
+                        }
                     }
                 }
             }

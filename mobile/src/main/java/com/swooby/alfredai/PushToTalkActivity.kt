@@ -26,83 +26,119 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.constraintlayout.compose.ConstraintLayout
-import com.openai.apis.RealtimeApi
-import com.openai.infrastructure.ApiClient
-import com.openai.models.RealtimeSessionCreateRequest
-import com.openai.models.RealtimeSessionCreateRequestTurnDetection
-import com.swooby.alfredai.openai.realtime.RealtimeClient
 import com.swooby.alfredai.ui.theme.AlfredAITheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class PushToTalkActivity : ComponentActivity() {
-
-    private var realtime: RealtimeAPI? = null
-
-    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            AlfredAITheme {
-                Scaffold(modifier = Modifier
-                    .border(1.dp, Color.Red)
-                    .fillMaxSize(),
-                    topBar = {
-                        TopAppBar(
-                            modifier = Modifier.background(MaterialTheme.colorScheme.primary),
-                            title = { Text("PushToTalk") },
-                        )
-                    }
-                ) { innerPadding ->
+            PushToTalkApp()
+        }
+    }
+}
 
-                    val dangerousOpenAiApiKey = BuildConfig.DANGEROUS_OPENAI_API_KEY
-                    Log.d(MainActivity.TAG, "dangerousOpenAiApiKey: $dangerousOpenAiApiKey")
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PushToTalkApp() {
+    val applicationContext = LocalContext.current.applicationContext
+    val alfredAiApp = applicationContext as? AlfredAiApp
+    val realtimeClient = alfredAiApp?.realtimeClient
 
-                    var sessionState by remember { mutableStateOf("Creating session...") }
+    AlfredAITheme {
+        Scaffold(modifier = Modifier
+            .border(1.dp, Color.Red)
+            .fillMaxSize(),
+            topBar = {
+                TopAppBar(
+                    modifier = Modifier.background(MaterialTheme.colorScheme.primary),
+                    title = { Text("PushToTalk") },
+                )
+            }
+        ) { innerPadding ->
 
-                    val applicationContext = applicationContext
+            var sessionState by remember { mutableStateOf("Creating session...") }
 
-                    LaunchedEffect(Unit) {
-                        CoroutineScope(Dispatchers.IO).launch {
+            LaunchedEffect(Unit) {
+                CoroutineScope(Dispatchers.IO).launch {
 
-                            //
-                            // TODO: Experiment with changing vad to manual and try to get PTT to work good
-                            //
-                            val sessionConfig = SessionConfig(
-                                turn_detection = SessionTurnDetection(type = null)
-                            )
-
-                            val ephemeralKey = RealtimeAPI.requestOpenAiRealtimeEphemeralApiKey(
-                                dangerousOpenAiApiKey,
-                                SessionModel.`gpt-4o-realtime-preview-2024-12-17`,
-                                SessionVoice.verse,
-                                sessionConfig
-                            )
-                            Log.d(MainActivity.TAG, "ephemeralKey: $ephemeralKey")
-                            sessionState = if (ephemeralKey != null) {
-                                realtime = RealtimeAPI(ephemeralKey)
-                                realtime?.connect(applicationContext, sessionConfig)
-                                "Session created"
-                            } else {
-                                "Error creating session"
-                            }
-                        }
-                    }
-
-                    ConstraintLayout(modifier = Modifier.fillMaxSize()) {
-                        val (button) = createRefs()
-                        PushToTalkButton(
-                            modifier = Modifier
-                                .border(1.dp, Color.Green)
-                                .constrainAs(button) {
-                                    centerTo(parent)
-                                }
-                                .padding(innerPadding),
-                        )
+                    val ephemeralApiKey = realtimeClient?.connect(applicationContext)
+                    Log.d(MainActivity.TAG, "ephemeralApiKey: $ephemeralApiKey")
+                    realtimeClient?.setLocalAudioTrackMicrophoneEnabled(false)
+                    sessionState = if (ephemeralApiKey != null) {
+                        "Session created"
+                    } else {
+                        "Error creating session"
                     }
                 }
+            }
+
+            ConstraintLayout(modifier = Modifier.fillMaxSize()) {
+                val (button) = createRefs()
+                PushToTalkButton(
+                    modifier = Modifier
+                        .border(1.dp, Color.Green)
+                        .constrainAs(button) {
+                            centerTo(parent)
+                        }
+                        .padding(innerPadding),
+                    onPushToTalkStart = { pttState ->
+                        Log.d(MainActivity.TAG, "")
+                        Log.d(MainActivity.TAG, "+onPushToTalkStart: pttState=$pttState")
+                        // 1. Play the start sound
+                        Log.d(MainActivity.TAG, "onPushToTalkStart: playing start sound")
+                        Utils.playAudioResourceOnce(
+                            context = applicationContext,
+                            audioResourceId = R.raw.quindar_nasa_apollo_intro
+                        ) {
+                            // 2. Wait for the start sound to finish
+                            Log.d(MainActivity.TAG, "onPushToTalkStart: start sound finished")
+                            // 3. Open the mic
+                            Log.d(MainActivity.TAG, "onPushToTalkStart: opening mic")
+                            realtimeClient?.setLocalAudioTrackMicrophoneEnabled(true)
+                            Log.d(MainActivity.TAG, "onPushToTalkStart: mic opened")
+                            // 4. Wait for the mic to open successfully
+                            //...
+                            Log.d(MainActivity.TAG, "-onPushToTalkStart")
+                            Log.d(MainActivity.TAG, "")
+                        }
+                        true
+                    },
+                    onPushToTalkStop = { pttState ->
+                        Log.d(MainActivity.TAG, "")
+                        Log.d(MainActivity.TAG, "+onPushToTalkStop: pttState=$pttState")
+                        // 1. Close the mic
+                        Log.d(MainActivity.TAG, "onPushToTalkStop: closing mic")
+                        realtimeClient?.setLocalAudioTrackMicrophoneEnabled(false)
+                        Log.d(MainActivity.TAG, "onPushToTalkStop: mic closed")
+                        // 2. Wait for the mic to close successfully
+                        //...
+                        // 3. Send input_audio_buffer.commit
+                        Log.d(MainActivity.TAG, "onPushToTalkStop: sending input_audio_buffer.commit")
+                        realtimeClient?.dataSendInputAudioBufferCommit()
+                        Log.d(MainActivity.TAG, "onPushToTalkStop: input_audio_buffer.commit sent")
+                        // 4. Send response.create
+                        Log.d(MainActivity.TAG, "onPushToTalkStop: sending response.create")
+                        realtimeClient?.dataSendResponseCreate()
+                        Log.d(MainActivity.TAG, "onPushToTalkStop: response.create sent")
+                        // 5. Play the stop sound
+                        Log.d(MainActivity.TAG, "onPushToTalkStop: playing stop sound")
+                        Utils.playAudioResourceOnce(
+                            context = applicationContext,
+                            audioResourceId = R.raw.quindar_nasa_apollo_outro
+                        ) {
+                            // 6. Wait for the stop sound to finish
+                            Log.d(MainActivity.TAG, "onPushToTalkStop: stop sound finished")
+                            //...
+                            Log.d(MainActivity.TAG, "-onPushToTalkStop")
+                            Log.d(MainActivity.TAG, "")
+                        }
+                        true
+                    },
+                )
             }
         }
     }
@@ -111,7 +147,5 @@ class PushToTalkActivity : ComponentActivity() {
 @Preview
 @Composable
 fun PushToTalkButtonActivityPreview() {
-    AlfredAITheme {
-        PushToTalkButton()
-    }
+    PushToTalkApp()
 }

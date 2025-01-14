@@ -1,51 +1,56 @@
 [versions]
-agp = "8.7.3"
+activity = "1.9.3"
+activityCompose = "1.9.3"
+agp = "8.8.0"
+appcompat = "1.7.0"
+composeBom = "2024.12.01"
+composeFoundation = "1.4.0"
+composeMaterial = "1.4.0"
+constraintlayout = "2.2.0"
 constraintlayoutCompose = "1.1.0"
-firebaseBom = "33.7.0"
-webrtcSdkAndroid = "125.6422.06.1"
-kotlin = "2.0.20"
-kotlinxSerialization = "2.1.0"
-kotlinxSerializationJson = "1.7.3"
 coreKtx = "1.15.0"
+coreSplashscreen = "1.0.1"
+espressoCore = "3.6.1"
+firebaseBom = "33.7.0"
+horologistComposeTools = "0.6.17"
+horologistTiles = "0.6.17"
 junit = "4.13.2"
 junitVersion = "1.2.1"
-espressoCore = "3.6.1"
-appcompat = "1.7.0"
+kotlin = "2.0.20"
+kotlintestRunnerJunit5 = "3.4.2"
+lifecycleRuntimeKtx = "2.8.7"
+material = "1.12.0"
+moshiKotlin = "1.15.1"
+okhttp = "4.12.0"
 okhttpBom = "4.12.0"
 playServicesWearable = "19.0.0"
-material = "1.12.0"
-activity = "1.9.3"
-constraintlayout = "2.2.0"
-composeBom = "2024.12.01"
-composeMaterial = "1.4.0"
-composeFoundation = "1.4.0"
-wearToolingPreview = "1.0.0"
-activityCompose = "1.9.3"
-coreSplashscreen = "1.0.1"
+runtimeAndroid = "1.7.6"
 tiles = "1.4.1"
 tilesMaterial = "1.4.1"
 tilesTooling = "1.4.1"
 tilesToolingPreview = "1.4.1"
-horologistComposeTools = "0.6.17"
-horologistTiles = "0.6.17"
-watchfaceComplicationsDataSourceKtx = "1.2.1"
-runtimeAndroid = "1.7.6"
 uiToolingPreviewAndroid = "1.7.6"
-lifecycleRuntimeKtx = "2.8.7"
+watchfaceComplicationsDataSourceKtx = "1.2.1"
+wearToolingPreview = "1.0.0"
+webrtcSdkAndroid = "125.6422.06.1"
 
 [libraries]
 androidx-constraintlayout-compose = { module = "androidx.constraintlayout:constraintlayout-compose", version.ref = "constraintlayoutCompose" }
+firebase-analytics = { module = "com.google.firebase:firebase-analytics" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
-kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+kotlintest-runner-junit5 = { module = "io.kotlintest:kotlintest-runner-junit5", version.ref = "kotlintestRunnerJunit5" }
+moshi-adapters = { module = "com.squareup.moshi:moshi-adapters", version.ref = "moshiKotlin" }
+moshi-kotlin = { module = "com.squareup.moshi:moshi-kotlin", version.ref = "moshiKotlin" }
 webrtc-sdk-android = { module = "io.github.webrtc-sdk:android", version.ref = "webrtcSdkAndroid" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
-logging-interceptor = { module = "com.squareup.okhttp3:logging-interceptor" }
-okhttp = { module = "com.squareup.okhttp3:okhttp" }
-okhttp-bom = { module = "com.squareup.okhttp3:okhttp-bom", version.ref = "okhttpBom" }
+okhttp3-bom = { module = "com.squareup.okhttp3:okhttp-bom", version.ref = "okhttpBom" }
+okhttp3 = { module = "com.squareup.okhttp3:okhttp" }
+okhttp3-okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+okhttp3-logging-interceptor = { module = "com.squareup.okhttp3:logging-interceptor" }
 play-services-wearable = { group = "com.google.android.gms", name = "play-services-wearable", version.ref = "playServicesWearable" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 androidx-activity = { group = "androidx.activity", name = "activity", version.ref = "activity" }
@@ -79,4 +84,3 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 android-library = { id = "com.android.library", version.ref = "agp" }
-kotlinx-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlinxSerialization" }

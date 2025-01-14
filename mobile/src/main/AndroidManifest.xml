@@ -19,9 +19,9 @@
         android:theme="@style/Theme.AlfredAI"
         >
         <activity
-            android:name=".MainActivity"
+            android:name=".PushToTalkActivity"
             android:exported="true"
-            android:label="@string/title_activity_main"
+            android:label="@string/title_activity_push_to_talk"
             android:theme="@style/Theme.AlfredAI"
             >
             <intent-filter>

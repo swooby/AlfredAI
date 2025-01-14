@@ -1,5 +1,7 @@
 package com.swooby.alfredai.openai.realtime
 
+import kotlin.reflect.KClass
+
 object RealtimeUtils {
     /**
      * Generates an id to send with events and messages
@@ -19,29 +21,5 @@ object RealtimeUtils {
             }
             .joinToString("")
         return prefix + randomStr
-    }
-
-    fun quote(value: Any?, typeOnly: Boolean = false): String {
-        if (value == null) {
-            return "null"
-        }
-
-        if (typeOnly) {
-            return getShortClassName(value)!!
-        }
-
-        if (value is String) {
-            return "\"$value\""
-        }
-
-        if (value is CharSequence) {
-            return "\"$value\""
-        }
-
-        return value.toString()
-    }
-
-    fun getShortClassName(value: Any?): String? {
-        return value?.javaClass?.simpleName
     }
 }

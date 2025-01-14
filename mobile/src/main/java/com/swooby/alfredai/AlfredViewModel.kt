@@ -1,5 +1,6 @@
 package com.swooby.alfredai
 
+import android.app.Application
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -7,6 +8,12 @@ import androidx.compose.ui.res.vectorResource
 import androidx.lifecycle.ViewModel
 
 class AlfredViewModel : ViewModel() {
+    companion object {
+        private const val TAG = "AlfredViewModel"
+
+        var application: Application? = null
+    }
+
     enum class AlfredState {
         //Loading,
         Idle,

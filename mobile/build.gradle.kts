@@ -4,7 +4,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.kotlinx.serialization)
     id("com.google.gms.google-services")
 }
 
@@ -76,11 +75,12 @@ dependencies {
 
     implementation(platform(libs.firebase.bom))
 
-    implementation(platform(libs.okhttp.bom))
-    implementation(libs.okhttp)
-    implementation(libs.logging.interceptor)
+    implementation(platform(libs.okhttp3.bom))
+    implementation(libs.okhttp3)
+    implementation(libs.okhttp3.logging.interceptor)
 
     implementation(libs.webrtc.sdk.android)
+    implementation(libs.moshi.kotlin)
 
     implementation(project(":openai-kotlin-client"))
 }
