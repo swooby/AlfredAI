@@ -2,9 +2,15 @@ package com.swooby.alfredai
 
 import android.content.Context
 import android.media.MediaPlayer
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
 import kotlin.reflect.KClass
 
 object Utils {
@@ -35,16 +41,22 @@ object Utils {
         }
     }
 
-    fun playAudioResourceOnce(context: Context, audioResourceId: Int, state: Any? = null, onCompletion: ((Any?) -> Unit)? = null) {
-        CoroutineScope(Dispatchers.IO).launch {
-            val mediaPlayer = MediaPlayer.create(context, audioResourceId)
-            mediaPlayer.setOnCompletionListener {
-                CoroutineScope(Dispatchers.Main).launch {
-                    onCompletion?.invoke(state)
-                }
+    fun playAudioResourceOnce(
+        context: Context,
+        audioResourceId: Int,
+        volume: Float = 0.7f,
+        state: Any? = null,
+        onCompletion: ((Any?) -> Unit)? = null
+    ) {
+        Log.d(MainActivity.TAG, "+playAudioResourceOnce(..., audioResourceId=$audioResourceId, ...)")
+        MediaPlayer.create(context, audioResourceId).apply {
+            setVolume(volume, volume)
+            setOnCompletionListener {
+                onCompletion?.invoke(state)
                 it.release()
+                Log.d(MainActivity.TAG, "-playAudioResourceOnce(..., audioResourceId=$audioResourceId, ...)")
             }
-            mediaPlayer.start()
+            start()
         }
     }
 }

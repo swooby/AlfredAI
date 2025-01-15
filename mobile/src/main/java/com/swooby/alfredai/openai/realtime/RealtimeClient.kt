@@ -11,6 +11,7 @@ import com.openai.infrastructure.Serializer
 import com.openai.infrastructure.Success
 import com.openai.models.RealtimeClientEventInputAudioBufferClear
 import com.openai.models.RealtimeClientEventInputAudioBufferCommit
+import com.openai.models.RealtimeClientEventResponseCancel
 import com.openai.models.RealtimeClientEventResponseCreate
 import com.openai.models.RealtimeClientEventSessionUpdate
 import com.openai.models.RealtimeServerEventInputAudioBufferCleared
@@ -44,7 +45,8 @@ import java.nio.ByteBuffer
  *
  * https://github.com/GetStream/webrtc-android/blob/main/stream-webrtc-android/src/main/java/org/webrtc/
  */
-class RealtimeClient(private val dangerousApiKey: String,
+class RealtimeClient(private val applicationContext: Context,
+                     private val dangerousApiKey: String,
                      private var sessionConfig: RealtimeSessionCreateRequest,
                      private val debug:Boolean = false) {
     companion object {
@@ -69,7 +71,31 @@ class RealtimeClient(private val dangerousApiKey: String,
     private var dataChannel: DataChannel? = null
     private var dataChannelOpened = false
 
-    val isConnected: Boolean get() = peerConnection != null
+    private var _isConnectingOrConnected: Boolean = false
+    var isConnectingOrConnected: Boolean
+        get() = _isConnectingOrConnected
+        private set(value) {
+            if (value != _isConnectingOrConnected) {
+                _isConnectingOrConnected = value
+                if (value) {
+                    notifyConnecting()
+                }
+            }
+        }
+
+    private var _isConnected: Boolean = false
+    var isConnected: Boolean
+        get() = _isConnected
+        private set(value) {
+            if (value != _isConnected) {
+                _isConnected = value
+                if (value) {
+                    notifyConnected()
+                } else {
+                    notifyDisconnected()
+                }
+            }
+        }
 
     /**
      * Send the offer SDP to OpenAI’s Realtime endpoint and get the answer SDP back.
@@ -106,10 +132,13 @@ class RealtimeClient(private val dangerousApiKey: String,
         }
     }
 
-    fun connect(context: Context): String? {
+    fun connect(): String? {
+        log.d("+connect()")
         if (isConnected) {
             throw IllegalStateException("RealtimeAPI is already connected")
         }
+
+        isConnectingOrConnected = true
 
         // Set accessToken to our real [ergo, "dangerous"] API key
         ApiClient.accessToken = dangerousApiKey
@@ -127,7 +156,7 @@ class RealtimeClient(private val dangerousApiKey: String,
         ApiClient.accessToken = ephemeralApiKey
 
         PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions
-            .builder(context)
+            .builder(applicationContext)
             .also { builder ->
                 if (debug) {
                     builder
@@ -156,6 +185,17 @@ class RealtimeClient(private val dangerousApiKey: String,
                 }
                 override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState) {
                     logPc.d("onIceConnectionChange($newState)")
+                    when (newState) {
+                        PeerConnection.IceConnectionState.CONNECTED -> {
+                            isConnected = true
+                        }
+                        PeerConnection.IceConnectionState.DISCONNECTED,
+                        PeerConnection.IceConnectionState.FAILED,
+                        PeerConnection.IceConnectionState.CLOSED -> {
+                            disconnect()
+                        }
+                        else -> {}
+                    }
                 }
                 override fun onIceConnectionReceivingChange(receiving: Boolean) {
                     logPc.d("onIceConnectionReceivingChange($receiving)")
@@ -201,7 +241,7 @@ class RealtimeClient(private val dangerousApiKey: String,
         //  Closest thing I can find is to enable session input_audio_transcription,
         //  but that costs more money! :/
         setLocalAudioMicrophone(peerConnectionFactory)
-        setLocalAudioSpeaker(context)
+        setLocalAudioSpeaker(applicationContext)
         //
         //endregion Audio
         //
@@ -214,8 +254,8 @@ class RealtimeClient(private val dangerousApiKey: String,
                 logDc.d("onBufferedAmountChange($previousAmount)")
             }
             override fun onStateChange() {
-                val dataChannel = dataChannel
-                val state = dataChannel?.state()
+                val dataChannel = dataChannel ?: return
+                val state = dataChannel.state()
                 logDc.d("onStateChange(): dataChannel.state()=$state")
                 if (!dataChannelOpened && state == DataChannel.State.OPEN) {
                     dataChannelOpened = true
@@ -244,9 +284,11 @@ class RealtimeClient(private val dangerousApiKey: String,
                 dataByteBuffer.get(bytes)
                 if (buffer.binary) {
                     logDc.d("onMessage: buffer(${bytes.size} bytes BINARY)=[...]")
+                    notifyBinaryMessageReceived(bytes)
                 } else {
                     val messageText = String(bytes, Charsets.UTF_8)
                     logDc.d("onMessage: buffer(${bytes.size} bytes TEXT)=${Utils.quote(messageText)}")
+                    notifyTextMessageReceived(messageText)
                 }
             }
         })
@@ -320,21 +362,28 @@ class RealtimeClient(private val dangerousApiKey: String,
             }
         }, offerConstraints)
 
+        log.d("-connect(); ephemeralApiKey=$ephemeralApiKey")
         return ephemeralApiKey
     }
 
     fun disconnect() {
+        log.d("+disconnect()")
+        isConnectingOrConnected = false
+        isConnected = false
+        val peerConnection = this.peerConnection
+        this.peerConnection = null
         peerConnection?.also {
             it.close()
-            peerConnection = null
         }
         localAudioTrackMicrophoneSender = null
         localAudioTrackMicrophone = null
+        val dataChannel = this.dataChannel
+        this.dataChannel = null
         dataChannel?.also {
             it.close()
-            dataChannel = null
         }
         dataChannelOpened = false
+        log.d("-disconnect()")
     }
 
     private inline fun <reified T> dataSend(content: T, mediaType: String? = ApiClient.JsonMediaType): Boolean {
@@ -363,6 +412,8 @@ class RealtimeClient(private val dangerousApiKey: String,
     }
 
     fun dataSendSessionUpdate(sessionConfig: RealtimeSessionCreateRequest): Boolean {
+        log.d("dataSendSessionUpdate($sessionConfig)")
+        this.sessionConfig = sessionConfig
         val content = RealtimeClientEventSessionUpdate(
             type = RealtimeClientEventSessionUpdate.Type.sessionUpdate,
             session = sessionConfig,
@@ -417,6 +468,7 @@ class RealtimeClient(private val dangerousApiKey: String,
      * Essentially unmute or mute the microphone
      */
     fun setLocalAudioTrackMicrophoneEnabled(enabled: Boolean) {
+        log.d("setLocalAudioTrackMicrophoneEnabled($enabled)")
         localAudioTrackMicrophone?.setEnabled(enabled)
     }
 
@@ -429,6 +481,7 @@ class RealtimeClient(private val dangerousApiKey: String,
     // "
 
     fun dataSendInputAudioBufferClear(): Boolean {
+        log.d("dataSendInputAudioBufferClear()")
         return dataSend(RealtimeClientEventInputAudioBufferClear(
             type = RealtimeClientEventInputAudioBufferClear.Type.input_audio_bufferClear,
             event_id = RealtimeUtils.generateId()
@@ -436,6 +489,7 @@ class RealtimeClient(private val dangerousApiKey: String,
     }
 
     fun dataSendInputAudioBufferCommit(): Boolean {
+        log.d("dataSendInputAudioBufferCommit()")
         return dataSend(RealtimeClientEventInputAudioBufferCommit(
             type = RealtimeClientEventInputAudioBufferCommit.Type.input_audio_bufferCommit,
             event_id = RealtimeUtils.generateId()
@@ -443,9 +497,19 @@ class RealtimeClient(private val dangerousApiKey: String,
     }
 
     fun dataSendResponseCreate(): Boolean {
+        log.d("dataSendResponseCreate()")
         return dataSend(RealtimeClientEventResponseCreate(
             type = RealtimeClientEventResponseCreate.Type.responseCreate,
             event_id = RealtimeUtils.generateId()
+        ))
+    }
+
+    fun dataSendResponseCancel(responseId: String? = null): Boolean {
+        log.d("dataSendResponseCancel(responseId=${Utils.quote(responseId)})")
+        return dataSend(RealtimeClientEventResponseCancel(
+            type = RealtimeClientEventResponseCancel.Type.responseCancel,
+            event_id = RealtimeUtils.generateId(),
+            response_id = responseId
         ))
     }
 
@@ -460,4 +524,79 @@ class RealtimeClient(private val dangerousApiKey: String,
 
     // TODO:(pv) implement text inputs and outputs
     //  https://platform.openai.com/docs/guides/realtime-model-capabilities#text-inputs-and-outputs
+
+    //
+    //region Event Listener
+    //
+
+    interface RealtimeClientListener {
+        /**
+         * Called when the client is starting a connection.
+         */
+        fun onConnecting()
+
+        /**
+         * Called when the client has successfully established a connection.
+         */
+        fun onConnected()
+
+        /**
+         * Called when the client has disconnected.
+         */
+        fun onDisconnected()
+
+        /**
+         * Called when a binary data message is received.
+         */
+        fun onBinaryMessageReceived(data: ByteArray)
+
+        /**
+         * Called when a textual data message is received over the DataChannel.
+         */
+        fun onTextMessageReceived(message: String)
+    }
+
+    private val listeners = mutableListOf<RealtimeClientListener>()
+
+    fun addListener(listener: RealtimeClientListener) {
+        listeners.add(listener)
+    }
+
+    fun removeListener(listener: RealtimeClientListener) {
+        listeners.remove(listener)
+    }
+
+    private fun notifyConnecting() {
+        listeners.forEach {
+            it.onConnecting()
+        }
+    }
+
+    private fun notifyConnected() {
+        listeners.forEach {
+            it.onConnected()
+        }
+    }
+
+    private fun notifyDisconnected() {
+        listeners.forEach {
+            it.onDisconnected()
+        }
+    }
+
+    private fun notifyBinaryMessageReceived(data: ByteArray) {
+        listeners.forEach {
+            it.onBinaryMessageReceived(data)
+        }
+    }
+
+    private fun notifyTextMessageReceived(message: String) {
+        listeners.forEach {
+            it.onTextMessageReceived(message)
+        }
+    }
+
+    //
+    //endregion
+    //
 }
