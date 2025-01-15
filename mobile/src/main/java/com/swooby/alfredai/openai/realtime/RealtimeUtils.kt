@@ -1,7 +1,5 @@
 package com.swooby.alfredai.openai.realtime
 
-import kotlin.reflect.KClass
-
 object RealtimeUtils {
     /**
      * Generates an id to send with events and messages

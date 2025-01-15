@@ -4,16 +4,21 @@ import android.content.Context
 import android.media.MediaPlayer
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.util.JsonReader
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.io.IOException
+import java.io.StringReader
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import kotlin.reflect.KClass
 
 object Utils {
+    private val TAG = Utils::class.java.simpleName
+
     fun quote(value: Any?, typeOnly: Boolean = false): String {
         if (value == null) {
             return "null"
@@ -58,5 +63,27 @@ object Utils {
             }
             start()
         }
+    }
+
+    fun extractValue(key: String, jsonString: String): String? {
+        try {
+            val reader = JsonReader(StringReader(jsonString))
+            reader.beginObject()
+            while (reader.hasNext()) {
+                val name = reader.nextName()
+                if (name == key) {
+                    val type = reader.nextString()
+                    reader.close()
+                    return type
+                } else {
+                    reader.skipValue()
+                }
+            }
+            reader.endObject()
+            reader.close()
+        } catch (e: IOException) {
+            Log.e(TAG, "extractValue: Error parsing JSON: ${e.message}")
+        }
+        return null
     }
 }

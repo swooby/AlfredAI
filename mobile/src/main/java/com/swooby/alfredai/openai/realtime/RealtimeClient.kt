@@ -14,7 +14,34 @@ import com.openai.models.RealtimeClientEventInputAudioBufferCommit
 import com.openai.models.RealtimeClientEventResponseCancel
 import com.openai.models.RealtimeClientEventResponseCreate
 import com.openai.models.RealtimeClientEventSessionUpdate
+import com.openai.models.RealtimeServerEventConversationCreated
+import com.openai.models.RealtimeServerEventConversationItemCreated
+import com.openai.models.RealtimeServerEventConversationItemDeleted
+import com.openai.models.RealtimeServerEventConversationItemInputAudioTranscriptionCompleted
+import com.openai.models.RealtimeServerEventConversationItemInputAudioTranscriptionFailed
+import com.openai.models.RealtimeServerEventConversationItemTruncated
+import com.openai.models.RealtimeServerEventError
 import com.openai.models.RealtimeServerEventInputAudioBufferCleared
+import com.openai.models.RealtimeServerEventInputAudioBufferCommitted
+import com.openai.models.RealtimeServerEventInputAudioBufferSpeechStarted
+import com.openai.models.RealtimeServerEventInputAudioBufferSpeechStopped
+import com.openai.models.RealtimeServerEventRateLimitsUpdated
+import com.openai.models.RealtimeServerEventResponseAudioDelta
+import com.openai.models.RealtimeServerEventResponseAudioDone
+import com.openai.models.RealtimeServerEventResponseAudioTranscriptDelta
+import com.openai.models.RealtimeServerEventResponseAudioTranscriptDone
+import com.openai.models.RealtimeServerEventResponseContentPartAdded
+import com.openai.models.RealtimeServerEventResponseContentPartDone
+import com.openai.models.RealtimeServerEventResponseCreated
+import com.openai.models.RealtimeServerEventResponseDone
+import com.openai.models.RealtimeServerEventResponseFunctionCallArgumentsDelta
+import com.openai.models.RealtimeServerEventResponseFunctionCallArgumentsDone
+import com.openai.models.RealtimeServerEventResponseOutputItemAdded
+import com.openai.models.RealtimeServerEventResponseOutputItemDone
+import com.openai.models.RealtimeServerEventResponseTextDelta
+import com.openai.models.RealtimeServerEventResponseTextDone
+import com.openai.models.RealtimeServerEventSessionCreated
+import com.openai.models.RealtimeServerEventSessionUpdated
 import com.openai.models.RealtimeSessionCreateRequest
 import com.openai.models.RealtimeSessionModel
 import com.swooby.alfredai.Utils
@@ -283,12 +310,10 @@ class RealtimeClient(private val applicationContext: Context,
                 val bytes = ByteArray(dataByteBuffer.remaining())
                 dataByteBuffer.get(bytes)
                 if (buffer.binary) {
-                    logDc.d("onMessage: buffer(${bytes.size} bytes BINARY)=[...]")
-                    notifyBinaryMessageReceived(bytes)
+                    onDataChannelBinary(bytes)
                 } else {
                     val messageText = String(bytes, Charsets.UTF_8)
-                    logDc.d("onMessage: buffer(${bytes.size} bytes TEXT)=${Utils.quote(messageText)}")
-                    notifyTextMessageReceived(messageText)
+                    onDataChannelText(messageText)
                 }
             }
         })
@@ -389,7 +414,7 @@ class RealtimeClient(private val applicationContext: Context,
     private inline fun <reified T> dataSend(content: T, mediaType: String? = ApiClient.JsonMediaType): Boolean {
         when {
             mediaType == null || (mediaType.startsWith("application/") && mediaType.endsWith("json")) ->
-                return dataSend(Serializer.moshi.adapter(T::class.java).toJson(content))
+                return dataSend(Serializer.serialize<T>(content))
             else ->
                 throw UnsupportedOperationException("send currently only supports JSON body.")
         }
@@ -414,11 +439,11 @@ class RealtimeClient(private val applicationContext: Context,
     fun dataSendSessionUpdate(sessionConfig: RealtimeSessionCreateRequest): Boolean {
         log.d("dataSendSessionUpdate($sessionConfig)")
         this.sessionConfig = sessionConfig
-        val content = RealtimeClientEventSessionUpdate(
+        return dataSend(RealtimeClientEventSessionUpdate(
             type = RealtimeClientEventSessionUpdate.Type.sessionUpdate,
             session = sessionConfig,
-            event_id = RealtimeUtils.generateId())
-        return dataSend(content)
+            event_id = RealtimeUtils.generateId()
+        ))
     }
 
 //    fun startRtcEventLog() {
@@ -547,13 +572,44 @@ class RealtimeClient(private val applicationContext: Context,
 
         /**
          * Called when a binary data message is received.
+         * @return true to stop further handling; false to continue further handling.
          */
-        fun onBinaryMessageReceived(data: ByteArray)
+        fun onBinaryMessageReceived(data: ByteArray): Boolean
 
         /**
          * Called when a textual data message is received over the DataChannel.
+         * @return true to stop further handling; false to continue further handling.
          */
-        fun onTextMessageReceived(message: String)
+        fun onTextMessageReceived(message: String): Boolean
+
+        fun onServerEventConversationCreated(realtimeServerEventConversationCreated: RealtimeServerEventConversationCreated)
+        fun onServerEventConversationItemCreated(realtimeServerEventConversationItemCreated: RealtimeServerEventConversationItemCreated)
+        fun onServerEventConversationItemDeleted(realtimeServerEventConversationItemDeleted: RealtimeServerEventConversationItemDeleted)
+        fun onServerEventConversationItemInputAudioTranscriptionCompleted(realtimeServerEventConversationItemInputAudioTranscriptionCompleted: RealtimeServerEventConversationItemInputAudioTranscriptionCompleted)
+        fun onServerEventConversationItemInputAudioTranscriptionFailed(realtimeServerEventConversationItemInputAudioTranscriptionFailed: RealtimeServerEventConversationItemInputAudioTranscriptionFailed)
+        fun onServerEventConversationItemTruncated(realtimeServerEventConversationItemTruncated: RealtimeServerEventConversationItemTruncated)
+        fun onServerEventError(realtimeServerEventError: RealtimeServerEventError)
+        fun onServerEventInputAudioBufferCleared(realtimeServerEventInputAudioBufferCleared: RealtimeServerEventInputAudioBufferCleared)
+        fun onServerEventInputAudioBufferCommitted(realtimeServerEventInputAudioBufferCommitted: RealtimeServerEventInputAudioBufferCommitted)
+        fun onServerEventInputAudioBufferSpeechStarted(realtimeServerEventInputAudioBufferSpeechStarted: RealtimeServerEventInputAudioBufferSpeechStarted)
+        fun onServerEventInputAudioBufferSpeechStopped(realtimeServerEventInputAudioBufferSpeechStopped: RealtimeServerEventInputAudioBufferSpeechStopped)
+        fun onServerEventRateLimitsUpdated(realtimeServerEventRateLimitsUpdated: RealtimeServerEventRateLimitsUpdated)
+        fun onServerEventResponseAudioDelta(realtimeServerEventResponseAudioDelta: RealtimeServerEventResponseAudioDelta)
+        fun onServerEventResponseAudioDone(realtimeServerEventResponseAudioDone: RealtimeServerEventResponseAudioDone)
+        fun onServerEventResponseAudioTranscriptDelta(realtimeServerEventResponseAudioTranscriptDelta: RealtimeServerEventResponseAudioTranscriptDelta)
+        fun onServerEventResponseAudioTranscriptDone(realtimeServerEventResponseAudioTranscriptDone: RealtimeServerEventResponseAudioTranscriptDone)
+        fun onServerEventResponseContentPartAdded(realtimeServerEventResponseContentPartAdded: RealtimeServerEventResponseContentPartAdded)
+        fun onServerEventResponseContentPartDone(realtimeServerEventResponseContentPartDone: RealtimeServerEventResponseContentPartDone)
+        fun onServerEventResponseCreated(realtimeServerEventResponseCreated: RealtimeServerEventResponseCreated)
+        fun onServerEventResponseDone(realtimeServerEventResponseDone: RealtimeServerEventResponseDone)
+        fun onServerEventResponseFunctionCallArgumentsDelta(realtimeServerEventResponseFunctionCallArgumentsDelta: RealtimeServerEventResponseFunctionCallArgumentsDelta)
+        fun onServerEventResponseFunctionCallArgumentsDone(realtimeServerEventResponseFunctionCallArgumentsDone: RealtimeServerEventResponseFunctionCallArgumentsDone)
+        fun onServerEventResponseOutputItemAdded(realtimeServerEventResponseOutputItemAdded: RealtimeServerEventResponseOutputItemAdded)
+        fun onServerEventResponseOutputItemDone(realtimeServerEventResponseOutputItemDone: RealtimeServerEventResponseOutputItemDone)
+        fun onServerEventResponseTextDelta(realtimeServerEventResponseTextDelta: RealtimeServerEventResponseTextDelta)
+        fun onServerEventResponseTextDone(realtimeServerEventResponseTextDone: RealtimeServerEventResponseTextDone)
+        fun onServerEventSessionCreated(realtimeServerEventSessionCreated: RealtimeServerEventSessionCreated)
+        fun onServerEventSessionUpdated(realtimeServerEventSessionUpdated: RealtimeServerEventSessionUpdated)
     }
 
     private val listeners = mutableListOf<RealtimeClientListener>()
@@ -584,15 +640,358 @@ class RealtimeClient(private val applicationContext: Context,
         }
     }
 
-    private fun notifyBinaryMessageReceived(data: ByteArray) {
+    private fun onDataChannelBinary(data: ByteArray) {
+        if (debug && false) {
+            log.d("onDataChannelBinary: data(${data.size} bytes BINARY)=[...]")
+        }
         listeners.forEach {
-            it.onBinaryMessageReceived(data)
+            if (it.onBinaryMessageReceived(data)) return
         }
     }
 
-    private fun notifyTextMessageReceived(message: String) {
+    private fun onDataChannelText(message: String) {
+        if (debug && false) {
+            log.d("onDataChannelText: message(${message.length} chars TEXT)=${Utils.quote(message)}")
+        }
         listeners.forEach {
-            it.onTextMessageReceived(message)
+            if (it.onTextMessageReceived(message)) return
+        }
+
+        val type = Utils.extractValue("type", message)
+        log.d("onDataChannelText: type=${Utils.quote(type)}")
+        // TODO: Consider using reflection to auto-populate the equivalent of the below code...
+        when (type) {
+            RealtimeServerEventConversationCreated.Type.conversationCreated.value -> {
+                Serializer.deserialize<RealtimeServerEventConversationCreated>(message)?.also {
+                    notifyServerEventConversationCreated(it)
+                }
+            }
+            RealtimeServerEventConversationItemCreated.Type.conversationItemCreated.value -> {
+                Serializer.deserialize<RealtimeServerEventConversationItemCreated>(message)?.also {
+                    notifyServerEventConversationItemCreated(it)
+                }
+            }
+            RealtimeServerEventConversationItemDeleted.Type.conversationItemDeleted.value -> {
+                Serializer.deserialize<RealtimeServerEventConversationItemDeleted>(message)?.also {
+                    notifyServerEventConversationItemDeleted(it)
+                }
+            }
+            RealtimeServerEventConversationItemInputAudioTranscriptionCompleted.Type.conversationItemInput_audio_transcriptionCompleted.value -> {
+                Serializer.deserialize<RealtimeServerEventConversationItemInputAudioTranscriptionCompleted>(message)?.also {
+                    notifyServerEventConversationItemInputAudioTranscriptionCompleted(it)
+                }
+            }
+            RealtimeServerEventConversationItemInputAudioTranscriptionFailed.Type.conversationItemInput_audio_transcriptionFailed.value -> {
+                Serializer.deserialize<RealtimeServerEventConversationItemInputAudioTranscriptionFailed>(message)?.also {
+                    notifyServerEventConversationItemInputAudioTranscriptionFailed(it)
+                }
+            }
+            RealtimeServerEventConversationItemTruncated.Type.conversationItemTruncated.value -> {
+                Serializer.deserialize<RealtimeServerEventConversationItemTruncated>(message)?.also {
+                    notifyServerEventConversationItemTruncated(it)
+                }
+            }
+            RealtimeServerEventError.Type.error.value -> {
+                Serializer.deserialize<RealtimeServerEventError>(message)?.also {
+                    notifyServerEventError(it)
+                }
+            }
+            RealtimeServerEventInputAudioBufferCleared.Type.input_audio_bufferCleared.value -> {
+                Serializer.deserialize<RealtimeServerEventInputAudioBufferCleared>(message)?.also {
+                    notifyServerEventInputAudioBufferCleared(it)
+                }
+            }
+            RealtimeServerEventInputAudioBufferCommitted.Type.input_audio_bufferCommitted.value -> {
+                Serializer.deserialize<RealtimeServerEventInputAudioBufferCommitted>(message)?.also {
+                    notifyServerEventInputAudioBufferCommitted(it)
+                }
+            }
+            RealtimeServerEventInputAudioBufferSpeechStarted.Type.input_audio_bufferSpeech_started.value -> {
+                Serializer.deserialize<RealtimeServerEventInputAudioBufferSpeechStarted>(message)?.also {
+                    notifyServerEventInputAudioBufferSpeechStarted(it)
+                }
+            }
+            RealtimeServerEventInputAudioBufferSpeechStopped.Type.input_audio_bufferSpeech_stopped.value -> {
+                Serializer.deserialize<RealtimeServerEventInputAudioBufferSpeechStopped>(message)?.also {
+                    notifyServerEventInputAudioBufferSpeechStopped(it)
+                }
+            }
+            RealtimeServerEventRateLimitsUpdated.Type.rate_limitsUpdated.value -> {
+               Serializer.deserialize<RealtimeServerEventRateLimitsUpdated>(message)?.also {
+                   notifyServerEventRateLimitsUpdated(it)
+               }
+            }
+            RealtimeServerEventResponseAudioDelta.Type.responseAudioDelta.value -> {
+                Serializer.deserialize<RealtimeServerEventResponseAudioDelta>(message)?.also {
+                    notifyServerEventResponseAudioDelta(it)
+                }
+            }
+            RealtimeServerEventResponseAudioDone.Type.responseAudioDone.value -> {
+                Serializer.deserialize<RealtimeServerEventResponseAudioDone>(message)?.also {
+                    notifyServerEventResponseAudioDone(it)
+                }
+            }
+            RealtimeServerEventResponseAudioTranscriptDelta.Type.responseAudio_transcriptDelta.value -> {
+                Serializer.deserialize<RealtimeServerEventResponseAudioTranscriptDelta>(message)?.also {
+                    notifyServerEventResponseAudioTranscriptDelta(it)
+                }
+            }
+            RealtimeServerEventResponseAudioTranscriptDone.Type.responseAudio_transcriptDone.value -> {
+                Serializer.deserialize<RealtimeServerEventResponseAudioTranscriptDone>(message)?.also {
+                    notifyServerEventResponseAudioTranscriptDone(it)
+                }
+            }
+            RealtimeServerEventResponseContentPartAdded.Type.responseContent_partAdded.value -> {
+                Serializer.deserialize<RealtimeServerEventResponseContentPartAdded>(message)?.also {
+                    notifyServerEventResponseContentPartAdded(it)
+                }
+            }
+            RealtimeServerEventResponseContentPartDone.Type.responseContent_partDone.value -> {
+                Serializer.deserialize<RealtimeServerEventResponseContentPartDone>(message)?.also {
+                    notifyServerEventResponseContentPartDone(it)
+                }
+            }
+            RealtimeServerEventResponseCreated.Type.responseCreated.value -> {
+                Serializer.deserialize<RealtimeServerEventResponseCreated>(message)?.also {
+                    notifyServerEventResponseCreated(it)
+                }
+            }
+            RealtimeServerEventResponseDone.Type.responseDone.value -> {
+                Serializer.deserialize<RealtimeServerEventResponseDone>(message)?.also {
+                    notifyServerEventResponseDone(it)
+                }
+            }
+            RealtimeServerEventResponseFunctionCallArgumentsDelta.Type.responseFunction_call_argumentsDelta.value -> {
+                Serializer.deserialize<RealtimeServerEventResponseFunctionCallArgumentsDelta>(message)?.also {
+                    notifyServerEventResponseFunctionCallArgumentsDelta(it)
+                }
+            }
+            RealtimeServerEventResponseFunctionCallArgumentsDone.Type.responseFunction_call_argumentsDone.value -> {
+                Serializer.deserialize<RealtimeServerEventResponseFunctionCallArgumentsDone>(message)?.also {
+                    notifyServerEventResponseFunctionCallArgumentsDone(it)
+                }
+            }
+            RealtimeServerEventResponseOutputItemAdded.Type.responseOutput_itemAdded.value -> {
+                Serializer.deserialize<RealtimeServerEventResponseOutputItemAdded>(message)?.also {
+                    notifyServerEventResponseOutputItemAdded(it)
+                }
+            }
+            RealtimeServerEventResponseOutputItemDone.Type.responseOutput_itemDone.value -> {
+                Serializer.deserialize<RealtimeServerEventResponseOutputItemDone>(message)?.also {
+                    notifyServerEventResponseOutputItemDone(it)
+                }
+            }
+            RealtimeServerEventResponseTextDelta.Type.responseTextDelta.value -> {
+                Serializer.deserialize<RealtimeServerEventResponseTextDelta>(message)?.also {
+                    notifyServerEventResponseTextDelta(it)
+                }
+            }
+            RealtimeServerEventResponseTextDone.Type.responseTextDone.value -> {
+                Serializer.deserialize<RealtimeServerEventResponseTextDone>(message)?.also {
+                    notifyServerEventResponseTextDone(it)
+                }
+            }
+            RealtimeServerEventSessionCreated.Type.sessionCreated.value -> {
+                Serializer.deserialize<RealtimeServerEventSessionCreated>(message)?.also {
+                    notifyServerEventSessionCreated(it)
+                }
+            }
+            RealtimeServerEventSessionUpdated.Type.sessionUpdated.value -> {
+                Serializer.deserialize<RealtimeServerEventSessionUpdated>(message)?.also {
+                    notifyServerEventSessionUpdated(it)
+                }
+            }
+            else -> log.w("onDataChannelText: unknown type=$type")
+        }
+    }
+
+    private fun notifyServerEventConversationCreated(realtimeServerEventConversationCreated: RealtimeServerEventConversationCreated) {
+        listeners.forEach {
+            it.onServerEventConversationCreated(realtimeServerEventConversationCreated)
+        }
+    }
+
+    private fun notifyServerEventConversationItemCreated(realtimeServerEventConversationItemCreated: RealtimeServerEventConversationItemCreated) {
+        listeners.forEach {
+            it.onServerEventConversationItemCreated(realtimeServerEventConversationItemCreated)
+        }
+    }
+
+    private fun notifyServerEventConversationItemDeleted(realtimeServerEventConversationItemDeleted: RealtimeServerEventConversationItemDeleted) {
+        listeners.forEach {
+            it.onServerEventConversationItemDeleted(realtimeServerEventConversationItemDeleted)
+        }
+    }
+
+    private fun notifyServerEventConversationItemInputAudioTranscriptionCompleted(
+        realtimeServerEventConversationItemInputAudioTranscriptionCompleted: RealtimeServerEventConversationItemInputAudioTranscriptionCompleted
+    ) {
+        listeners.forEach {
+            it.onServerEventConversationItemInputAudioTranscriptionCompleted(realtimeServerEventConversationItemInputAudioTranscriptionCompleted)
+        }
+    }
+
+    private fun notifyServerEventConversationItemInputAudioTranscriptionFailed(
+        realtimeServerEventConversationItemInputAudioTranscriptionFailed: RealtimeServerEventConversationItemInputAudioTranscriptionFailed
+    ) {
+        listeners.forEach {
+            it.onServerEventConversationItemInputAudioTranscriptionFailed(realtimeServerEventConversationItemInputAudioTranscriptionFailed)
+        }
+    }
+
+    private fun notifyServerEventConversationItemTruncated(
+        realtimeServerEventConversationItemTruncated: RealtimeServerEventConversationItemTruncated
+    ) {
+        listeners.forEach {
+            it.onServerEventConversationItemTruncated(realtimeServerEventConversationItemTruncated)
+        }
+    }
+
+    private fun notifyServerEventError(realtimeServerEventError: RealtimeServerEventError) {
+        listeners.forEach {
+            it.onServerEventError(realtimeServerEventError)
+        }
+    }
+
+    private fun notifyServerEventInputAudioBufferCleared(realtimeServerEventInputAudioBufferCleared: RealtimeServerEventInputAudioBufferCleared) {
+        listeners.forEach {
+            it.onServerEventInputAudioBufferCleared(realtimeServerEventInputAudioBufferCleared)
+        }
+    }
+
+    private fun notifyServerEventInputAudioBufferCommitted(
+        realtimeServerEventInputAudioBufferCommitted: RealtimeServerEventInputAudioBufferCommitted
+    ) {
+        listeners.forEach {
+            it.onServerEventInputAudioBufferCommitted(realtimeServerEventInputAudioBufferCommitted)
+        }
+    }
+
+    private fun notifyServerEventInputAudioBufferSpeechStarted(
+        realtimeServerEventInputAudioBufferSpeechStarted: RealtimeServerEventInputAudioBufferSpeechStarted
+    ) {
+        listeners.forEach {
+            it.onServerEventInputAudioBufferSpeechStarted(realtimeServerEventInputAudioBufferSpeechStarted)
+        }
+    }
+
+    private fun notifyServerEventInputAudioBufferSpeechStopped(
+        realtimeServerEventInputAudioBufferSpeechStopped: RealtimeServerEventInputAudioBufferSpeechStopped
+    ) {
+        listeners.forEach {
+            it.onServerEventInputAudioBufferSpeechStopped(realtimeServerEventInputAudioBufferSpeechStopped)
+        }
+    }
+
+    private fun notifyServerEventRateLimitsUpdated(realtimeServerEventRateLimitsUpdated: RealtimeServerEventRateLimitsUpdated) {
+        listeners.forEach {
+            it.onServerEventRateLimitsUpdated(realtimeServerEventRateLimitsUpdated)
+        }
+    }
+
+    private fun notifyServerEventResponseAudioDelta(realtimeServerEventResponseAudioDelta: RealtimeServerEventResponseAudioDelta) {
+        listeners.forEach {
+            it.onServerEventResponseAudioDelta(realtimeServerEventResponseAudioDelta)
+        }
+    }
+
+    private fun notifyServerEventResponseAudioDone(realtimeServerEventResponseAudioDone: RealtimeServerEventResponseAudioDone) {
+        listeners.forEach {
+            it.onServerEventResponseAudioDone(realtimeServerEventResponseAudioDone)
+        }
+    }
+
+    private fun notifyServerEventResponseAudioTranscriptDelta(
+        realtimeServerEventResponseAudioTranscriptDelta: RealtimeServerEventResponseAudioTranscriptDelta
+    ) {
+        listeners.forEach {
+            it.onServerEventResponseAudioTranscriptDelta(realtimeServerEventResponseAudioTranscriptDelta)
+        }
+    }
+
+    private fun notifyServerEventResponseAudioTranscriptDone(
+        realtimeServerEventResponseAudioTranscriptDone: RealtimeServerEventResponseAudioTranscriptDone
+    ) {
+        listeners.forEach {
+            it.onServerEventResponseAudioTranscriptDone(realtimeServerEventResponseAudioTranscriptDone)
+        }
+    }
+
+    private fun notifyServerEventResponseContentPartAdded(
+        realtimeServerEventResponseContentPartAdded: RealtimeServerEventResponseContentPartAdded
+    ) {
+        listeners.forEach {
+            it.onServerEventResponseContentPartAdded(realtimeServerEventResponseContentPartAdded)
+        }
+    }
+
+    private fun notifyServerEventResponseContentPartDone(realtimeServerEventResponseContentPartDone: RealtimeServerEventResponseContentPartDone) {
+        listeners.forEach {
+            it.onServerEventResponseContentPartDone(realtimeServerEventResponseContentPartDone)
+        }
+    }
+
+    private fun notifyServerEventResponseCreated(realtimeServerEventResponseCreated: RealtimeServerEventResponseCreated) {
+        listeners.forEach {
+            it.onServerEventResponseCreated(realtimeServerEventResponseCreated)
+        }
+    }
+
+    private fun notifyServerEventResponseDone(realtimeServerEventResponseDone: RealtimeServerEventResponseDone) {
+        listeners.forEach {
+            it.onServerEventResponseDone(realtimeServerEventResponseDone)
+        }
+    }
+
+    private fun notifyServerEventResponseFunctionCallArgumentsDelta(
+        realtimeServerEventResponseFunctionCallArgumentsDelta: RealtimeServerEventResponseFunctionCallArgumentsDelta
+    ) {
+        listeners.forEach {
+            it.onServerEventResponseFunctionCallArgumentsDelta(realtimeServerEventResponseFunctionCallArgumentsDelta)
+        }
+    }
+
+    private fun notifyServerEventResponseFunctionCallArgumentsDone(
+        realtimeServerEventResponseFunctionCallArgumentsDone: RealtimeServerEventResponseFunctionCallArgumentsDone
+    ) {
+        listeners.forEach {
+            it.onServerEventResponseFunctionCallArgumentsDone(realtimeServerEventResponseFunctionCallArgumentsDone)
+        }
+    }
+
+    private fun notifyServerEventResponseOutputItemAdded(realtimeServerEventResponseOutputItemAdded: RealtimeServerEventResponseOutputItemAdded) {
+        listeners.forEach {
+            it.onServerEventResponseOutputItemAdded(realtimeServerEventResponseOutputItemAdded)
+        }
+    }
+
+    private fun notifyServerEventResponseOutputItemDone(realtimeServerEventResponseOutputItemDone: RealtimeServerEventResponseOutputItemDone) {
+        listeners.forEach {
+            it.onServerEventResponseOutputItemDone(realtimeServerEventResponseOutputItemDone)
+        }
+    }
+
+    private fun notifyServerEventResponseTextDelta(realtimeServerEventResponseTextDelta: RealtimeServerEventResponseTextDelta) {
+        listeners.forEach {
+            it.onServerEventResponseTextDelta(realtimeServerEventResponseTextDelta)
+        }
+    }
+
+    private fun notifyServerEventResponseTextDone(realtimeServerEventResponseTextDone: RealtimeServerEventResponseTextDone) {
+        listeners.forEach {
+            it.onServerEventResponseTextDone(realtimeServerEventResponseTextDone)
+        }
+    }
+
+    private fun notifyServerEventSessionCreated(realtimeServerEventSessionCreated: RealtimeServerEventSessionCreated) {
+        listeners.forEach {
+            it.onServerEventSessionCreated(realtimeServerEventSessionCreated)
+        }
+    }
+
+    private fun notifyServerEventSessionUpdated(realtimeServerEventSessionUpdated: RealtimeServerEventSessionUpdated) {
+        listeners.forEach {
+            it.onServerEventSessionUpdated(realtimeServerEventSessionUpdated)
         }
     }
 

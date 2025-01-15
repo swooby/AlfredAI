@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+//noinspection UsingMaterialAndMaterial3Libraries
+import androidx.compose.material.ContentAlpha
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -41,6 +43,34 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.constraintlayout.compose.ConstraintLayout
+import com.openai.models.RealtimeServerEventConversationCreated
+import com.openai.models.RealtimeServerEventConversationItemCreated
+import com.openai.models.RealtimeServerEventConversationItemDeleted
+import com.openai.models.RealtimeServerEventConversationItemInputAudioTranscriptionCompleted
+import com.openai.models.RealtimeServerEventConversationItemInputAudioTranscriptionFailed
+import com.openai.models.RealtimeServerEventConversationItemTruncated
+import com.openai.models.RealtimeServerEventError
+import com.openai.models.RealtimeServerEventInputAudioBufferCleared
+import com.openai.models.RealtimeServerEventInputAudioBufferCommitted
+import com.openai.models.RealtimeServerEventInputAudioBufferSpeechStarted
+import com.openai.models.RealtimeServerEventInputAudioBufferSpeechStopped
+import com.openai.models.RealtimeServerEventRateLimitsUpdated
+import com.openai.models.RealtimeServerEventResponseAudioDelta
+import com.openai.models.RealtimeServerEventResponseAudioDone
+import com.openai.models.RealtimeServerEventResponseAudioTranscriptDelta
+import com.openai.models.RealtimeServerEventResponseAudioTranscriptDone
+import com.openai.models.RealtimeServerEventResponseContentPartAdded
+import com.openai.models.RealtimeServerEventResponseContentPartDone
+import com.openai.models.RealtimeServerEventResponseCreated
+import com.openai.models.RealtimeServerEventResponseDone
+import com.openai.models.RealtimeServerEventResponseFunctionCallArgumentsDelta
+import com.openai.models.RealtimeServerEventResponseFunctionCallArgumentsDone
+import com.openai.models.RealtimeServerEventResponseOutputItemAdded
+import com.openai.models.RealtimeServerEventResponseOutputItemDone
+import com.openai.models.RealtimeServerEventResponseTextDelta
+import com.openai.models.RealtimeServerEventResponseTextDone
+import com.openai.models.RealtimeServerEventSessionCreated
+import com.openai.models.RealtimeServerEventSessionUpdated
 import com.swooby.alfredai.openai.realtime.RealtimeClient
 import com.swooby.alfredai.ui.theme.AlfredAITheme
 import kotlinx.coroutines.CoroutineScope
@@ -116,14 +146,184 @@ fun PushToTalkApp() {
                 isConnected = false
             }
 
-            override fun onBinaryMessageReceived(data: ByteArray) {
-                Log.d(PushToTalkActivity.TAG, "onBinaryMessageReceived(): data(${data.size})=...")
+            override fun onBinaryMessageReceived(data: ByteArray): Boolean {
+                //Log.d(PushToTalkActivity.TAG, "onBinaryMessageReceived(): data(${data.size})=...")
                 //...
+                return false
             }
 
-            override fun onTextMessageReceived(message: String) {
-                Log.d(PushToTalkActivity.TAG, "onTextMessageReceived(): message=${Utils.quote(message)}")
+            override fun onTextMessageReceived(message: String): Boolean {
+                //Log.d(PushToTalkActivity.TAG, "onTextMessageReceived(): message=${Utils.quote(message)}")
                 //...
+                return false
+            }
+
+            override fun onServerEventConversationCreated(
+                realtimeServerEventConversationCreated: RealtimeServerEventConversationCreated
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventConversationCreated($realtimeServerEventConversationCreated)")
+            }
+
+            override fun onServerEventConversationItemCreated(
+                realtimeServerEventConversationItemCreated: RealtimeServerEventConversationItemCreated
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventConversationItemCreated($realtimeServerEventConversationItemCreated)")
+            }
+
+            override fun onServerEventConversationItemDeleted(
+                realtimeServerEventConversationItemDeleted: RealtimeServerEventConversationItemDeleted
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventConversationItemDeleted($realtimeServerEventConversationItemDeleted)")
+            }
+
+            override fun onServerEventConversationItemInputAudioTranscriptionCompleted(
+                realtimeServerEventConversationItemInputAudioTranscriptionCompleted: RealtimeServerEventConversationItemInputAudioTranscriptionCompleted
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventConversationItemInputAudioTranscriptionCompleted($realtimeServerEventConversationItemInputAudioTranscriptionCompleted)")
+            }
+
+            override fun onServerEventConversationItemInputAudioTranscriptionFailed(
+                realtimeServerEventConversationItemInputAudioTranscriptionFailed: RealtimeServerEventConversationItemInputAudioTranscriptionFailed
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventConversationItemInputAudioTranscriptionFailed($realtimeServerEventConversationItemInputAudioTranscriptionFailed)")
+            }
+
+            override fun onServerEventConversationItemTruncated(
+                realtimeServerEventConversationItemTruncated: RealtimeServerEventConversationItemTruncated
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventConversationItemTruncated($realtimeServerEventConversationItemTruncated)")
+            }
+
+            override fun onServerEventError(
+                realtimeServerEventError: RealtimeServerEventError
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventError($realtimeServerEventError)")
+            }
+
+            override fun onServerEventInputAudioBufferCleared(
+                realtimeServerEventInputAudioBufferCleared: RealtimeServerEventInputAudioBufferCleared
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventInputAudioBufferCleared($realtimeServerEventInputAudioBufferCleared)")
+            }
+
+            override fun onServerEventInputAudioBufferCommitted(
+                realtimeServerEventInputAudioBufferCommitted: RealtimeServerEventInputAudioBufferCommitted
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventInputAudioBufferCommitted($realtimeServerEventInputAudioBufferCommitted)")
+            }
+
+            override fun onServerEventInputAudioBufferSpeechStarted(
+                realtimeServerEventInputAudioBufferSpeechStarted: RealtimeServerEventInputAudioBufferSpeechStarted
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventInputAudioBufferSpeechStarted($realtimeServerEventInputAudioBufferSpeechStarted)")
+            }
+
+            override fun onServerEventInputAudioBufferSpeechStopped(
+                realtimeServerEventInputAudioBufferSpeechStopped: RealtimeServerEventInputAudioBufferSpeechStopped
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventInputAudioBufferSpeechStopped($realtimeServerEventInputAudioBufferSpeechStopped)")
+            }
+
+            override fun onServerEventRateLimitsUpdated(
+                realtimeServerEventRateLimitsUpdated: RealtimeServerEventRateLimitsUpdated
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventRateLimitsUpdated($realtimeServerEventRateLimitsUpdated)")
+            }
+
+            override fun onServerEventResponseAudioDelta(
+                realtimeServerEventResponseAudioDelta: RealtimeServerEventResponseAudioDelta
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventResponseAudioDelta($realtimeServerEventResponseAudioDelta)")
+            }
+
+            override fun onServerEventResponseAudioDone(
+                realtimeServerEventResponseAudioDone: RealtimeServerEventResponseAudioDone
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventResponseAudioDone($realtimeServerEventResponseAudioDone)")
+            }
+
+            override fun onServerEventResponseAudioTranscriptDelta(
+                realtimeServerEventResponseAudioTranscriptDelta: RealtimeServerEventResponseAudioTranscriptDelta
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventResponseAudioTranscriptDelta($realtimeServerEventResponseAudioTranscriptDelta)")
+            }
+
+            override fun onServerEventResponseAudioTranscriptDone(
+                realtimeServerEventResponseAudioTranscriptDone: RealtimeServerEventResponseAudioTranscriptDone
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventResponseAudioTranscriptDone($realtimeServerEventResponseAudioTranscriptDone)")
+            }
+
+            override fun onServerEventResponseContentPartAdded(
+                realtimeServerEventResponseContentPartAdded: RealtimeServerEventResponseContentPartAdded
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventResponseContentPartAdded($realtimeServerEventResponseContentPartAdded)")
+            }
+
+            override fun onServerEventResponseContentPartDone(
+                realtimeServerEventResponseContentPartDone: RealtimeServerEventResponseContentPartDone
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventResponseContentPartDone($realtimeServerEventResponseContentPartDone)")
+            }
+
+            override fun onServerEventResponseCreated(
+                realtimeServerEventResponseCreated: RealtimeServerEventResponseCreated
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventResponseCreated($realtimeServerEventResponseCreated)")
+            }
+
+            override fun onServerEventResponseDone(
+                realtimeServerEventResponseDone: RealtimeServerEventResponseDone
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventResponseDone($realtimeServerEventResponseDone)")
+            }
+
+            override fun onServerEventResponseFunctionCallArgumentsDelta(
+                realtimeServerEventResponseFunctionCallArgumentsDelta: RealtimeServerEventResponseFunctionCallArgumentsDelta
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventResponseFunctionCallArgumentsDelta($realtimeServerEventResponseFunctionCallArgumentsDelta)")
+            }
+
+            override fun onServerEventResponseFunctionCallArgumentsDone(
+                realtimeServerEventResponseFunctionCallArgumentsDone: RealtimeServerEventResponseFunctionCallArgumentsDone
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventResponseFunctionCallArgumentsDone($realtimeServerEventResponseFunctionCallArgumentsDone)")
+            }
+
+            override fun onServerEventResponseOutputItemAdded(
+                realtimeServerEventResponseOutputItemAdded: RealtimeServerEventResponseOutputItemAdded
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventResponseOutputItemAdded($realtimeServerEventResponseOutputItemAdded)")
+            }
+
+            override fun onServerEventResponseOutputItemDone(
+                realtimeServerEventResponseOutputItemDone: RealtimeServerEventResponseOutputItemDone
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventResponseOutputItemDone($realtimeServerEventResponseOutputItemDone)")
+            }
+
+            override fun onServerEventResponseTextDelta(
+                realtimeServerEventResponseTextDelta: RealtimeServerEventResponseTextDelta
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventResponseTextDelta($realtimeServerEventResponseTextDelta)")
+            }
+
+            override fun onServerEventResponseTextDone(
+                realtimeServerEventResponseTextDone: RealtimeServerEventResponseTextDone
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventResponseTextDone($realtimeServerEventResponseTextDone)")
+            }
+
+            override fun onServerEventSessionCreated(
+                realtimeServerEventSessionCreated: RealtimeServerEventSessionCreated
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventSessionCreated($realtimeServerEventSessionCreated)")
+            }
+
+            override fun onServerEventSessionUpdated(
+                realtimeServerEventSessionUpdated: RealtimeServerEventSessionUpdated
+            ) {
+                Log.d(PushToTalkActivity.TAG, "onServerEventSessionUpdated($realtimeServerEventSessionUpdated)")
             }
         }
 
@@ -135,6 +335,8 @@ fun PushToTalkApp() {
     }
 
     AlfredAITheme(dynamicColor = false) {
+        val disabledColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.disabled)
+
         Scaffold(modifier = Modifier
             //.border(1.dp, Color.Red)
             .fillMaxSize(),
@@ -223,7 +425,7 @@ fun PushToTalkApp() {
                             else -> {
                                 CircularProgressIndicator(
                                     progress = { 1f },
-                                    color = Color.LightGray,
+                                    color = disabledColor,
                                     strokeWidth = 6.dp,
                                     modifier = Modifier.size(150.dp)
                                 )
@@ -309,7 +511,7 @@ fun PushToTalkApp() {
                         modifier = Modifier
                             .border(
                                 4.dp,
-                                if (isConnected) Color.Gray else Color.LightGray,
+                                if (isConnected) MaterialTheme.colorScheme.primary else disabledColor,
                                 shape = CircleShape
                             )
                     ) {
@@ -338,7 +540,7 @@ fun PushToTalkApp() {
                         modifier = Modifier
                             .border(
                                 4.dp,
-                                if (isConnected) Color.Gray else Color.LightGray,
+                                if (isConnected) MaterialTheme.colorScheme.primary else disabledColor,
                                 shape = CircleShape
                             )
                     ) {

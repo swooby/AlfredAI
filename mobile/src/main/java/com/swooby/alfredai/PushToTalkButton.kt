@@ -14,7 +14,10 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+//noinspection UsingMaterialAndMaterial3Libraries
+import androidx.compose.material.ContentAlpha
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -76,13 +79,14 @@ fun PushToTalkButton(
     var pttState by remember { mutableStateOf(PTTState.Idle) }
     val context = LocalContext.current
 
+    val disabledColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.disabled)
     val boxAlpha = if (enabled) 1.0f else 0.4f
 
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .size(120.dp)
-            .border(4.dp, if (enabled) Color.Gray else Color.LightGray, shape = CircleShape)
+            .border(4.dp, if (enabled) MaterialTheme.colorScheme.primary else disabledColor, shape = CircleShape)
             .background(
                 color = if (pttState == PTTState.Pressed) Color.Green else Color.Transparent,
                 shape = CircleShape
