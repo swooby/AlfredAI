@@ -6,4 +6,17 @@
     <string name="microphone_permission_not_granted">Microphone permission not granted</string>
     <string name="request_microphone_permission">Request Microphone Permission</string>
     <string name="title_activity_push_to_talk">PushToTalkActivity</string>
+    <string name="missing_api_key_instructions">
+<![CDATA[
+You must provide <b><i>your own</i></b> OpenAI API key to connect to OpenAI\'s Realtime API with.<br>
+<br>
+This app will locally encrypt and store your API key on this device only for use by this app only.<br>
+<br>
+If you don\'t already have an OpenAI API key, create one at
+<a href=\"https://platform.openai.com/api-keys\">https://platform.openai.com/api-keys</a>
+with <pre>\"Models = Read\"</pre> and <pre>\"Model capabilities = Write\"</pre> permissions.<br>
+<br>
+Copy your OpenAI API key and then paste it into the <pre>OpenAI API Key</pre> field below.
+]]>
+    </string>
 </resources>

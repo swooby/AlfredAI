@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioManager
 import com.openai.apis.RealtimeApi
 import com.openai.infrastructure.ApiClient
+import com.openai.infrastructure.ClientException
 import com.openai.infrastructure.MultiValueMap
 import com.openai.infrastructure.RequestConfig
 import com.openai.infrastructure.RequestMethod
@@ -43,6 +44,7 @@ import com.openai.models.RealtimeServerEventResponseTextDone
 import com.openai.models.RealtimeServerEventSessionCreated
 import com.openai.models.RealtimeServerEventSessionUpdated
 import com.openai.models.RealtimeSessionCreateRequest
+import com.openai.models.RealtimeSessionCreateResponse
 import com.openai.models.RealtimeSessionModel
 import com.swooby.alfredai.Utils
 import kotlinx.coroutines.CoroutineScope
@@ -174,9 +176,21 @@ class RealtimeClient(private val applicationContext: Context,
          * https://platform.openai.com/docs/guides/realtime-webrtc#creating-an-ephemeral-token
          * https://platform.openai.com/docs/api-reference/realtime-sessions/create
          */
-        val realtimeSessionCreateResponse = realtime.createRealtimeSession(sessionConfig)
-        val ephemeralApiKey = realtimeSessionCreateResponse.client_secret?.value ?: return null
+        val realtimeSessionCreateResponse: RealtimeSessionCreateResponse? = try {
+            realtime.createRealtimeSession(sessionConfig)
+        } catch (exception: Exception) {
+            log.e("connect: exception=$exception")
+            notifyError(exception)
+            disconnect()
+            null
+        }
+        val ephemeralApiKey = realtimeSessionCreateResponse?.client_secret?.value
         log.d("connect: ephemeralApiKey=$ephemeralApiKey")
+        if (ephemeralApiKey == null) {
+            notifyError(ClientException("No Ephemeral API Key In Response"))
+            disconnect()
+            return null
+        }
 
         // Set accessToken to the response's safer (1 minute TTL) ephemeralApiKey;
         // clear it after requestOpenAiRealtimeSdp (success or fail)
@@ -393,6 +407,7 @@ class RealtimeClient(private val applicationContext: Context,
 
     fun disconnect() {
         log.d("+disconnect()")
+        ApiClient.accessToken = null
         isConnectingOrConnected = false
         isConnected = false
         val peerConnection = this.peerConnection
@@ -561,6 +576,11 @@ class RealtimeClient(private val applicationContext: Context,
         fun onConnecting()
 
         /**
+         * Called when the client encounters an error.
+         */
+        fun onError(error: Exception)
+
+        /**
          * Called when the client has successfully established a connection.
          */
         fun onConnected()
@@ -625,6 +645,12 @@ class RealtimeClient(private val applicationContext: Context,
     private fun notifyConnecting() {
         listeners.forEach {
             it.onConnecting()
+        }
+    }
+
+    private fun notifyError(error: Exception) {
+        listeners.forEach {
+            it.onError(error)
         }
     }
 

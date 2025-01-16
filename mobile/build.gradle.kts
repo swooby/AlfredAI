@@ -83,5 +83,7 @@ dependencies {
     implementation(libs.webrtc.sdk.android)
     implementation(libs.moshi.kotlin)
 
+    implementation(libs.jsoup)
+
     implementation(project(":openai-kotlin-client"))
 }

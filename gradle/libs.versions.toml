@@ -14,6 +14,7 @@ espressoCore = "3.6.1"
 firebaseBom = "33.7.0"
 horologistComposeTools = "0.6.17"
 horologistTiles = "0.6.17"
+jsoup = "1.16.1"
 junit = "4.13.2"
 junitVersion = "1.2.1"
 kotlin = "2.0.20"
@@ -39,6 +40,7 @@ androidx-constraintlayout-compose = { module = "androidx.constraintlayout:constr
 androidx-material = { module = "androidx.compose.material:material" }
 firebase-analytics = { module = "com.google.firebase:firebase-analytics" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
+jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 kotlintest-runner-junit5 = { module = "io.kotlintest:kotlintest-runner-junit5", version.ref = "kotlintestRunnerJunit5" }
 moshi-adapters = { module = "com.squareup.moshi:moshi-adapters", version.ref = "moshiKotlin" }
 moshi-kotlin = { module = "com.squareup.moshi:moshi-kotlin", version.ref = "moshiKotlin" }
