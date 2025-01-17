@@ -104,6 +104,14 @@ class PushToTalkPreferences(context: Context) {
             val apiKeyEncrypted = Crypto.hardwareEncrypt(value)
             putString("apiKey", apiKeyEncrypted)
         }
+
+    val sessionConfig: RealtimeSessionCreateRequest
+        get() {
+            getString("sessionConfig", "").also {
+                return Serializer.deserialize<RealtimeSessionCreateRequest>(it)
+                    ?: sessionConfigDefault
+            }
+        }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
