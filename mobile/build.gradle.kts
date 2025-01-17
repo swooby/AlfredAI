@@ -7,6 +7,14 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+fun ensureQuoted(input: String): String {
+    return if (input.startsWith("\"") && input.endsWith("\"")) {
+        input
+    } else {
+        "\"$input\""
+    }
+}
+
 android {
     namespace = "com.swooby.alfredai"
     compileSdk = 35
@@ -21,8 +29,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         val localProperties = gradleLocalProperties(rootDir, providers)
-        val dangerousOpenApiKey = localProperties.getProperty("DANGEROUS_OPENAI_API_KEY")
-        buildConfigField("String", "DANGEROUS_OPENAI_API_KEY", dangerousOpenApiKey)
+        val dangerousOpenApiKey = localProperties.getProperty("DANGEROUS_OPENAI_API_KEY") ?: ""
+        buildConfigField("String", "DANGEROUS_OPENAI_API_KEY", ensureQuoted(dangerousOpenApiKey))
     }
 
     buildTypes {

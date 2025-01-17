@@ -17,7 +17,7 @@ horologistTiles = "0.6.17"
 jsoup = "1.16.1"
 junit = "4.13.2"
 junitVersion = "1.2.1"
-kotlin = "2.0.20"
+kotlin = "2.0.21"
 kotlintestRunnerJunit5 = "3.4.2"
 lifecycleRuntimeKtx = "2.8.7"
 material = "1.12.0"
@@ -87,3 +87,4 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

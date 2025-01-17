@@ -32,19 +32,20 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.openai.infrastructure.Serializer
 import com.openai.models.RealtimeSessionCreateRequest
-import com.openai.models.RealtimeSessionCreateRequestTurnDetection
+import com.openai.models.RealtimeSessionTurnDetection
 import com.openai.models.RealtimeSessionInputAudioTranscription
 import com.openai.models.RealtimeSessionModel
+import com.openai.models.RealtimeSessionVoice
 import com.swooby.alfredai.PushToTalkViewModel.Companion.DEBUG
 import com.swooby.alfredai.ui.theme.AlfredAITheme
 
 class PushToTalkPreferences(context: Context) {
     companion object {
         val modelDefault = RealtimeSessionModel.`gpt-4o-mini-realtime-preview-2024-12-17`
-        val voiceDefault = RealtimeSessionCreateRequest.Voice.ash
+        val voiceDefault = RealtimeSessionVoice.ash
 
         // No turn_detection; We will be PTTing...
-        val turnDetectionDefault: RealtimeSessionCreateRequestTurnDetection? = null
+        val turnDetectionDefault: RealtimeSessionTurnDetection? = null
 
         // Costs noticeably more money, so turn it off if we are DEBUG, unless we really need it
         val inputAudioTranscriptionDefault = if (DEBUG || false) {
@@ -57,8 +58,8 @@ class PushToTalkPreferences(context: Context) {
         val sessionConfigDefault = RealtimeSessionCreateRequest(
             model = modelDefault,
             voice = voiceDefault,
-            turn_detection = turnDetectionDefault,
-            input_audio_transcription = inputAudioTranscriptionDefault,
+            turnDetection = turnDetectionDefault,
+            inputAudioTranscription = inputAudioTranscriptionDefault,
         )
     }
 
@@ -96,7 +97,7 @@ class PushToTalkPreferences(context: Context) {
 
     var apiKey: String
         get() {
-            val apiKeyEncrypted = getString("apiKey", "")
+            val apiKeyEncrypted = getString("apiKey", BuildConfig.DANGEROUS_OPENAI_API_KEY)
             return Crypto.hardwareDecrypt(apiKeyEncrypted)
         }
         set(value) {

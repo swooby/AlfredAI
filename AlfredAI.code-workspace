@@ -1,9 +1,11 @@
 {
 	"folders": [
 		{
+			"name": "AlfredAI",
 			"path": "."
 		},
 		{
+			"name": "openai-openapi-kotlin",
 			"path": "../openai-openapi-kotlin"
 		}
 	],

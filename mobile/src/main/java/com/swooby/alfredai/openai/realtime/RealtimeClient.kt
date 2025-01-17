@@ -184,7 +184,7 @@ class RealtimeClient(private val applicationContext: Context,
             disconnect()
             null
         }
-        val ephemeralApiKey = realtimeSessionCreateResponse?.client_secret?.value
+        val ephemeralApiKey = realtimeSessionCreateResponse?.clientSecret?.value
         log.d("connect: ephemeralApiKey=$ephemeralApiKey")
         if (ephemeralApiKey == null) {
             notifyError(ClientException("No Ephemeral API Key In Response"))
@@ -455,9 +455,8 @@ class RealtimeClient(private val applicationContext: Context,
         log.d("dataSendSessionUpdate($sessionConfig)")
         this.sessionConfig = sessionConfig
         return dataSend(RealtimeClientEventSessionUpdate(
-            type = RealtimeClientEventSessionUpdate.Type.sessionUpdate,
             session = sessionConfig,
-            event_id = RealtimeUtils.generateId()
+            eventId = RealtimeUtils.generateId()
         ))
     }
 
@@ -523,33 +522,29 @@ class RealtimeClient(private val applicationContext: Context,
     fun dataSendInputAudioBufferClear(): Boolean {
         log.d("dataSendInputAudioBufferClear()")
         return dataSend(RealtimeClientEventInputAudioBufferClear(
-            type = RealtimeClientEventInputAudioBufferClear.Type.input_audio_bufferClear,
-            event_id = RealtimeUtils.generateId()
+            eventId = RealtimeUtils.generateId()
         ))
     }
 
     fun dataSendInputAudioBufferCommit(): Boolean {
         log.d("dataSendInputAudioBufferCommit()")
         return dataSend(RealtimeClientEventInputAudioBufferCommit(
-            type = RealtimeClientEventInputAudioBufferCommit.Type.input_audio_bufferCommit,
-            event_id = RealtimeUtils.generateId()
+            eventId = RealtimeUtils.generateId()
         ))
     }
 
     fun dataSendResponseCreate(): Boolean {
         log.d("dataSendResponseCreate()")
         return dataSend(RealtimeClientEventResponseCreate(
-            type = RealtimeClientEventResponseCreate.Type.responseCreate,
-            event_id = RealtimeUtils.generateId()
+            eventId = RealtimeUtils.generateId()
         ))
     }
 
     fun dataSendResponseCancel(responseId: String? = null): Boolean {
         log.d("dataSendResponseCancel(responseId=${Utils.quote(responseId)})")
         return dataSend(RealtimeClientEventResponseCancel(
-            type = RealtimeClientEventResponseCancel.Type.responseCancel,
-            event_id = RealtimeUtils.generateId(),
-            response_id = responseId
+            eventId = RealtimeUtils.generateId(),
+            responseId = responseId
         ))
     }
 
@@ -687,32 +682,32 @@ class RealtimeClient(private val applicationContext: Context,
         log.d("onDataChannelText: type=${Utils.quote(type)}")
         // TODO: Consider using reflection to auto-populate the equivalent of the below code...
         when (type) {
-            RealtimeServerEventConversationCreated.Type.conversationCreated.value -> {
+            RealtimeServerEventConversationCreated.Type.conversationPeriodCreated.value -> {
                 Serializer.deserialize<RealtimeServerEventConversationCreated>(message)?.also {
                     notifyServerEventConversationCreated(it)
                 }
             }
-            RealtimeServerEventConversationItemCreated.Type.conversationItemCreated.value -> {
+            RealtimeServerEventConversationItemCreated.Type.conversationPeriodItemPeriodCreated.value -> {
                 Serializer.deserialize<RealtimeServerEventConversationItemCreated>(message)?.also {
                     notifyServerEventConversationItemCreated(it)
                 }
             }
-            RealtimeServerEventConversationItemDeleted.Type.conversationItemDeleted.value -> {
+            RealtimeServerEventConversationItemDeleted.Type.conversationPeriodItemPeriodDeleted.value -> {
                 Serializer.deserialize<RealtimeServerEventConversationItemDeleted>(message)?.also {
                     notifyServerEventConversationItemDeleted(it)
                 }
             }
-            RealtimeServerEventConversationItemInputAudioTranscriptionCompleted.Type.conversationItemInput_audio_transcriptionCompleted.value -> {
+            RealtimeServerEventConversationItemInputAudioTranscriptionCompleted.Type.conversationPeriodItemPeriodInput_audio_transcriptionPeriodCompleted.value -> {
                 Serializer.deserialize<RealtimeServerEventConversationItemInputAudioTranscriptionCompleted>(message)?.also {
                     notifyServerEventConversationItemInputAudioTranscriptionCompleted(it)
                 }
             }
-            RealtimeServerEventConversationItemInputAudioTranscriptionFailed.Type.conversationItemInput_audio_transcriptionFailed.value -> {
+            RealtimeServerEventConversationItemInputAudioTranscriptionFailed.Type.conversationPeriodItemPeriodInput_audio_transcriptionPeriodFailed.value -> {
                 Serializer.deserialize<RealtimeServerEventConversationItemInputAudioTranscriptionFailed>(message)?.also {
                     notifyServerEventConversationItemInputAudioTranscriptionFailed(it)
                 }
             }
-            RealtimeServerEventConversationItemTruncated.Type.conversationItemTruncated.value -> {
+            RealtimeServerEventConversationItemTruncated.Type.conversationPeriodItemPeriodTruncated.value -> {
                 Serializer.deserialize<RealtimeServerEventConversationItemTruncated>(message)?.also {
                     notifyServerEventConversationItemTruncated(it)
                 }
@@ -722,107 +717,107 @@ class RealtimeClient(private val applicationContext: Context,
                     notifyServerEventError(it)
                 }
             }
-            RealtimeServerEventInputAudioBufferCleared.Type.input_audio_bufferCleared.value -> {
+            RealtimeServerEventInputAudioBufferCleared.Type.input_audio_bufferPeriodCleared.value -> {
                 Serializer.deserialize<RealtimeServerEventInputAudioBufferCleared>(message)?.also {
                     notifyServerEventInputAudioBufferCleared(it)
                 }
             }
-            RealtimeServerEventInputAudioBufferCommitted.Type.input_audio_bufferCommitted.value -> {
+            RealtimeServerEventInputAudioBufferCommitted.Type.input_audio_bufferPeriodCommitted.value -> {
                 Serializer.deserialize<RealtimeServerEventInputAudioBufferCommitted>(message)?.also {
                     notifyServerEventInputAudioBufferCommitted(it)
                 }
             }
-            RealtimeServerEventInputAudioBufferSpeechStarted.Type.input_audio_bufferSpeech_started.value -> {
+            RealtimeServerEventInputAudioBufferSpeechStarted.Type.input_audio_bufferPeriodSpeech_started.value -> {
                 Serializer.deserialize<RealtimeServerEventInputAudioBufferSpeechStarted>(message)?.also {
                     notifyServerEventInputAudioBufferSpeechStarted(it)
                 }
             }
-            RealtimeServerEventInputAudioBufferSpeechStopped.Type.input_audio_bufferSpeech_stopped.value -> {
+            RealtimeServerEventInputAudioBufferSpeechStopped.Type.input_audio_bufferPeriodSpeech_stopped.value -> {
                 Serializer.deserialize<RealtimeServerEventInputAudioBufferSpeechStopped>(message)?.also {
                     notifyServerEventInputAudioBufferSpeechStopped(it)
                 }
             }
-            RealtimeServerEventRateLimitsUpdated.Type.rate_limitsUpdated.value -> {
+            RealtimeServerEventRateLimitsUpdated.Type.rate_limitsPeriodUpdated.value -> {
                Serializer.deserialize<RealtimeServerEventRateLimitsUpdated>(message)?.also {
                    notifyServerEventRateLimitsUpdated(it)
                }
             }
-            RealtimeServerEventResponseAudioDelta.Type.responseAudioDelta.value -> {
+            RealtimeServerEventResponseAudioDelta.Type.responsePeriodAudioPeriodDelta.value -> {
                 Serializer.deserialize<RealtimeServerEventResponseAudioDelta>(message)?.also {
                     notifyServerEventResponseAudioDelta(it)
                 }
             }
-            RealtimeServerEventResponseAudioDone.Type.responseAudioDone.value -> {
+            RealtimeServerEventResponseAudioDone.Type.responsePeriodAudioPeriodDone.value -> {
                 Serializer.deserialize<RealtimeServerEventResponseAudioDone>(message)?.also {
                     notifyServerEventResponseAudioDone(it)
                 }
             }
-            RealtimeServerEventResponseAudioTranscriptDelta.Type.responseAudio_transcriptDelta.value -> {
+            RealtimeServerEventResponseAudioTranscriptDelta.Type.responsePeriodAudio_transcriptPeriodDelta.value -> {
                 Serializer.deserialize<RealtimeServerEventResponseAudioTranscriptDelta>(message)?.also {
                     notifyServerEventResponseAudioTranscriptDelta(it)
                 }
             }
-            RealtimeServerEventResponseAudioTranscriptDone.Type.responseAudio_transcriptDone.value -> {
+            RealtimeServerEventResponseAudioTranscriptDone.Type.responsePeriodAudio_transcriptPeriodDone.value -> {
                 Serializer.deserialize<RealtimeServerEventResponseAudioTranscriptDone>(message)?.also {
                     notifyServerEventResponseAudioTranscriptDone(it)
                 }
             }
-            RealtimeServerEventResponseContentPartAdded.Type.responseContent_partAdded.value -> {
+            RealtimeServerEventResponseContentPartAdded.Type.responsePeriodContent_partPeriodAdded.value -> {
                 Serializer.deserialize<RealtimeServerEventResponseContentPartAdded>(message)?.also {
                     notifyServerEventResponseContentPartAdded(it)
                 }
             }
-            RealtimeServerEventResponseContentPartDone.Type.responseContent_partDone.value -> {
+            RealtimeServerEventResponseContentPartDone.Type.responsePeriodContent_partPeriodDone.value -> {
                 Serializer.deserialize<RealtimeServerEventResponseContentPartDone>(message)?.also {
                     notifyServerEventResponseContentPartDone(it)
                 }
             }
-            RealtimeServerEventResponseCreated.Type.responseCreated.value -> {
+            RealtimeServerEventResponseCreated.Type.responsePeriodCreated.value -> {
                 Serializer.deserialize<RealtimeServerEventResponseCreated>(message)?.also {
                     notifyServerEventResponseCreated(it)
                 }
             }
-            RealtimeServerEventResponseDone.Type.responseDone.value -> {
+            RealtimeServerEventResponseDone.Type.responsePeriodDone.value -> {
                 Serializer.deserialize<RealtimeServerEventResponseDone>(message)?.also {
                     notifyServerEventResponseDone(it)
                 }
             }
-            RealtimeServerEventResponseFunctionCallArgumentsDelta.Type.responseFunction_call_argumentsDelta.value -> {
+            RealtimeServerEventResponseFunctionCallArgumentsDelta.Type.responsePeriodFunction_call_argumentsPeriodDelta.value -> {
                 Serializer.deserialize<RealtimeServerEventResponseFunctionCallArgumentsDelta>(message)?.also {
                     notifyServerEventResponseFunctionCallArgumentsDelta(it)
                 }
             }
-            RealtimeServerEventResponseFunctionCallArgumentsDone.Type.responseFunction_call_argumentsDone.value -> {
+            RealtimeServerEventResponseFunctionCallArgumentsDone.Type.responsePeriodFunction_call_argumentsPeriodDone.value -> {
                 Serializer.deserialize<RealtimeServerEventResponseFunctionCallArgumentsDone>(message)?.also {
                     notifyServerEventResponseFunctionCallArgumentsDone(it)
                 }
             }
-            RealtimeServerEventResponseOutputItemAdded.Type.responseOutput_itemAdded.value -> {
+            RealtimeServerEventResponseOutputItemAdded.Type.responsePeriodOutput_itemPeriodAdded.value -> {
                 Serializer.deserialize<RealtimeServerEventResponseOutputItemAdded>(message)?.also {
                     notifyServerEventResponseOutputItemAdded(it)
                 }
             }
-            RealtimeServerEventResponseOutputItemDone.Type.responseOutput_itemDone.value -> {
+            RealtimeServerEventResponseOutputItemDone.Type.responsePeriodOutput_itemPeriodDone.value -> {
                 Serializer.deserialize<RealtimeServerEventResponseOutputItemDone>(message)?.also {
                     notifyServerEventResponseOutputItemDone(it)
                 }
             }
-            RealtimeServerEventResponseTextDelta.Type.responseTextDelta.value -> {
+            RealtimeServerEventResponseTextDelta.Type.responsePeriodTextPeriodDelta.value -> {
                 Serializer.deserialize<RealtimeServerEventResponseTextDelta>(message)?.also {
                     notifyServerEventResponseTextDelta(it)
                 }
             }
-            RealtimeServerEventResponseTextDone.Type.responseTextDone.value -> {
+            RealtimeServerEventResponseTextDone.Type.responsePeriodTextPeriodDone.value -> {
                 Serializer.deserialize<RealtimeServerEventResponseTextDone>(message)?.also {
                     notifyServerEventResponseTextDone(it)
                 }
             }
-            RealtimeServerEventSessionCreated.Type.sessionCreated.value -> {
+            RealtimeServerEventSessionCreated.Type.sessionPeriodCreated.value -> {
                 Serializer.deserialize<RealtimeServerEventSessionCreated>(message)?.also {
                     notifyServerEventSessionCreated(it)
                 }
             }
-            RealtimeServerEventSessionUpdated.Type.sessionUpdated.value -> {
+            RealtimeServerEventSessionUpdated.Type.sessionPeriodUpdated.value -> {
                 Serializer.deserialize<RealtimeServerEventSessionUpdated>(message)?.also {
                     notifyServerEventSessionUpdated(it)
                 }
