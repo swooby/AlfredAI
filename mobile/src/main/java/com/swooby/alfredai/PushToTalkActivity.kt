@@ -76,6 +76,7 @@ import com.openai.models.RealtimeServerEventResponseTextDelta
 import com.openai.models.RealtimeServerEventResponseTextDone
 import com.openai.models.RealtimeServerEventSessionCreated
 import com.openai.models.RealtimeServerEventSessionUpdated
+import com.swooby.alfredai.Utils.showToast
 import com.swooby.alfredai.openai.realtime.RealtimeClient
 import com.swooby.alfredai.ui.theme.AlfredAITheme
 import kotlinx.coroutines.CoroutineScope
@@ -84,10 +85,6 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 class PushToTalkActivity : ComponentActivity() {
-    companion object {
-        val TAG = PushToTalkActivity::class.simpleName
-    }
-
     private lateinit var pushToTalkViewModel: PushToTalkViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -142,7 +139,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                 }
             }
         } else {
-            Toast.makeText(context, "Not configured", Toast.LENGTH_SHORT).show()
+            showToast(context, "Not configured", Toast.LENGTH_SHORT)
             showPreferences = true
         }
     }
@@ -174,7 +171,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                     else -> "Error: ${error.message}"
                 }
                 CoroutineScope(Dispatchers.Main).launch {
-                    Toast.makeText(context, text, Toast.LENGTH_LONG).show()
+                    showToast(context, text, Toast.LENGTH_LONG)
                 }
             }
 
@@ -418,11 +415,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                         if (pushToTalkViewModel?.autoConnect?.value == true) {
                             connect("LaunchedEffect")
                         } else {
-                            Toast.makeText(
-                                context,
-                                "Auto-connect is disabled",
-                                Toast.LENGTH_SHORT
-                            ).show()
+                            showToast(context, "Auto-connect is disabled", Toast.LENGTH_SHORT)
                         }
                     }
 
@@ -585,8 +578,12 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                             IconButton(
                                 enabled = isConnected,
                                 onClick = {
-                                    pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
-                                        realtimeClient.dataSendInputAudioBufferClear()
+                                    if (true) {
+                                        showToast(context, "Reset Not Yet Implemented", Toast.LENGTH_SHORT)
+                                    } else {
+                                        pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
+                                            realtimeClient.dataSendInputAudioBufferClear()
+                                        }
                                     }
                                 },
                                 modifier = Modifier
@@ -616,8 +613,12 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                             IconButton(
                                 enabled = isConnected,
                                 onClick = {
-                                    pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
-                                        realtimeClient.dataSendResponseCancel()
+                                    if (true) {
+                                        showToast(context, "Stop Not Yet Implemented", Toast.LENGTH_SHORT)
+                                    } else {
+                                        pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
+                                            realtimeClient.dataSendResponseCancel()
+                                        }
                                     }
                                 },
                                 modifier = Modifier

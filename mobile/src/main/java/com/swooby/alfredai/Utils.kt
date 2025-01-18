@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.MediaPlayer
 import android.util.JsonReader
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
@@ -54,6 +55,12 @@ object Utils {
             is KClass<*> -> value.simpleName ?: "null"
             else -> value?.javaClass?.simpleName ?: "null"
         }
+    }
+
+    fun showToast(context: Context,
+                  message: String,
+                  duration: Int = Toast.LENGTH_SHORT) {
+        Toast.makeText(context, message, duration).show()
     }
 
     fun playAudioResourceOnce(
