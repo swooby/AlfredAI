@@ -1,6 +1,7 @@
 package com.swooby.alfredai.openai.realtime
 
 import android.content.Context
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import com.openai.apis.RealtimeApi
 import com.openai.infrastructure.ApiClient
@@ -489,11 +490,17 @@ class RealtimeClient(private val applicationContext: Context,
         localAudioTrackMicrophoneSender = peerConnection?.addTrack(localAudioTrackMicrophone)
     }
 
+    private fun getSpeakerphone(audioManager: AudioManager): AudioDeviceInfo? {
+        val availableDevices = audioManager.availableCommunicationDevices
+        return availableDevices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+    }
+
     private fun setLocalAudioSpeaker(context: Context) {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-        // deprecated...
-        audioManager.isSpeakerphoneOn = true
+        getSpeakerphone(audioManager)?.also {
+            audioManager.setCommunicationDevice(it)
+        }
     }
 
     /**
@@ -662,6 +669,7 @@ class RealtimeClient(private val applicationContext: Context,
     }
 
     private fun onDataChannelBinary(data: ByteArray) {
+        @Suppress("SimplifyBooleanWithConstants", "KotlinConstantConditions")
         if (debug && false) {
             log.d("onDataChannelBinary: data(${data.size} bytes BINARY)=[...]")
         }
@@ -671,6 +679,7 @@ class RealtimeClient(private val applicationContext: Context,
     }
 
     private fun onDataChannelText(message: String) {
+        @Suppress("SimplifyBooleanWithConstants", "KotlinConstantConditions")
         if (debug && false) {
             log.d("onDataChannelText: message(${message.length} chars TEXT)=${Utils.quote(message)}")
         }
