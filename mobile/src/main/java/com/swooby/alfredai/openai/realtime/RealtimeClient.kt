@@ -78,19 +78,16 @@ import java.nio.ByteBuffer
 class RealtimeClient(private val applicationContext: Context,
                      private val dangerousApiKey: String,
                      private var sessionConfig: RealtimeSessionCreateRequest,
+                     httpClient: OkHttpClient = httpLoggingClient,
                      private val debug:Boolean = false) {
     companion object {
         private val log = RealtimeLog(RealtimeClient::class)
-    }
 
-    private val httpClient = if (debug) {
-        OkHttpClient.Builder()
-            .addInterceptor(HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BODY
-            })
-            .build()
-    } else {
-        ApiClient.defaultClient
+        val httpLoggingClient = OkHttpClient.Builder()
+                .addInterceptor(HttpLoggingInterceptor().apply {
+                    level = HttpLoggingInterceptor.Level.BODY
+                })
+                .build()
     }
 
     private val realtime = RealtimeApi(client = httpClient)
