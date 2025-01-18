@@ -112,6 +112,7 @@ class PushToTalkActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
+    val TAG = "PushToTalkScreen"
 
     val context = LocalContext.current
     val disabledColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.disabled)
@@ -126,13 +127,14 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
         mutableStateOf(pushToTalkViewModel?.realtimeClient?.isConnected ?: false)
     }
 
-    fun connect() {
+    fun connect(caller: String) {
+        Log.d(TAG, "connect(caller=${Utils.quote(caller)})")
         if (pushToTalkViewModel?.isConfigured == true) {
             pushToTalkViewModel.realtimeClient?.also { realtimeClient ->
                 if (!isConnectingOrConnected) {
                     CoroutineScope(Dispatchers.IO).launch {
                         val ephemeralApiKey = realtimeClient.connect()
-                        Log.d(PushToTalkActivity.TAG, "ephemeralApiKey: $ephemeralApiKey")
+                        Log.d(TAG, "ephemeralApiKey: $ephemeralApiKey")
                         if (ephemeralApiKey != null) {
                             realtimeClient.setLocalAudioTrackMicrophoneEnabled(false)
                         }
@@ -151,12 +153,12 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
     DisposableEffect(Unit) {
         val realtimeClientListener = object : RealtimeClient.RealtimeClientListener {
             override fun onConnecting() {
-                Log.d(PushToTalkActivity.TAG, "onConnecting()")
+                Log.d(TAG, "onConnecting()")
                 isConnectingOrConnected = true
             }
 
             override fun onError(error: Exception) {
-                Log.d(PushToTalkActivity.TAG, "onError($error)")
+                Log.d(TAG, "onError($error)")
                 isConnectingOrConnected = false
                 isConnected = false
                 val text = when (error) {
@@ -177,24 +179,24 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
             }
 
             override fun onConnected() {
-                Log.d(PushToTalkActivity.TAG, "onConnected()")
+                Log.d(TAG, "onConnected()")
                 isConnected = true
             }
 
             override fun onDisconnected() {
-                Log.d(PushToTalkActivity.TAG, "onDisconnected()")
+                Log.d(TAG, "onDisconnected()")
                 isConnectingOrConnected = false
                 isConnected = false
             }
 
             override fun onBinaryMessageReceived(data: ByteArray): Boolean {
-                //Log.d(PushToTalkActivity.TAG, "onBinaryMessageReceived(): data(${data.size})=...")
+                //Log.d(TAG, "onBinaryMessageReceived(): data(${data.size})=...")
                 //...
                 return false
             }
 
             override fun onTextMessageReceived(message: String): Boolean {
-                //Log.d(PushToTalkActivity.TAG, "onTextMessageReceived(): message=${Utils.quote(message)}")
+                //Log.d(TAG, "onTextMessageReceived(): message=${Utils.quote(message)}")
                 //...
                 return false
             }
@@ -202,169 +204,169 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
             override fun onServerEventConversationCreated(
                 realtimeServerEventConversationCreated: RealtimeServerEventConversationCreated
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventConversationCreated($realtimeServerEventConversationCreated)")
+                Log.d(TAG, "onServerEventConversationCreated($realtimeServerEventConversationCreated)")
             }
 
             override fun onServerEventConversationItemCreated(
                 realtimeServerEventConversationItemCreated: RealtimeServerEventConversationItemCreated
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventConversationItemCreated($realtimeServerEventConversationItemCreated)")
+                Log.d(TAG, "onServerEventConversationItemCreated($realtimeServerEventConversationItemCreated)")
             }
 
             override fun onServerEventConversationItemDeleted(
                 realtimeServerEventConversationItemDeleted: RealtimeServerEventConversationItemDeleted
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventConversationItemDeleted($realtimeServerEventConversationItemDeleted)")
+                Log.d(TAG, "onServerEventConversationItemDeleted($realtimeServerEventConversationItemDeleted)")
             }
 
             override fun onServerEventConversationItemInputAudioTranscriptionCompleted(
                 realtimeServerEventConversationItemInputAudioTranscriptionCompleted: RealtimeServerEventConversationItemInputAudioTranscriptionCompleted
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventConversationItemInputAudioTranscriptionCompleted($realtimeServerEventConversationItemInputAudioTranscriptionCompleted)")
+                Log.d(TAG, "onServerEventConversationItemInputAudioTranscriptionCompleted($realtimeServerEventConversationItemInputAudioTranscriptionCompleted)")
             }
 
             override fun onServerEventConversationItemInputAudioTranscriptionFailed(
                 realtimeServerEventConversationItemInputAudioTranscriptionFailed: RealtimeServerEventConversationItemInputAudioTranscriptionFailed
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventConversationItemInputAudioTranscriptionFailed($realtimeServerEventConversationItemInputAudioTranscriptionFailed)")
+                Log.d(TAG, "onServerEventConversationItemInputAudioTranscriptionFailed($realtimeServerEventConversationItemInputAudioTranscriptionFailed)")
             }
 
             override fun onServerEventConversationItemTruncated(
                 realtimeServerEventConversationItemTruncated: RealtimeServerEventConversationItemTruncated
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventConversationItemTruncated($realtimeServerEventConversationItemTruncated)")
+                Log.d(TAG, "onServerEventConversationItemTruncated($realtimeServerEventConversationItemTruncated)")
             }
 
             override fun onServerEventError(
                 realtimeServerEventError: RealtimeServerEventError
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventError($realtimeServerEventError)")
+                Log.d(TAG, "onServerEventError($realtimeServerEventError)")
             }
 
             override fun onServerEventInputAudioBufferCleared(
                 realtimeServerEventInputAudioBufferCleared: RealtimeServerEventInputAudioBufferCleared
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventInputAudioBufferCleared($realtimeServerEventInputAudioBufferCleared)")
+                Log.d(TAG, "onServerEventInputAudioBufferCleared($realtimeServerEventInputAudioBufferCleared)")
             }
 
             override fun onServerEventInputAudioBufferCommitted(
                 realtimeServerEventInputAudioBufferCommitted: RealtimeServerEventInputAudioBufferCommitted
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventInputAudioBufferCommitted($realtimeServerEventInputAudioBufferCommitted)")
+                Log.d(TAG, "onServerEventInputAudioBufferCommitted($realtimeServerEventInputAudioBufferCommitted)")
             }
 
             override fun onServerEventInputAudioBufferSpeechStarted(
                 realtimeServerEventInputAudioBufferSpeechStarted: RealtimeServerEventInputAudioBufferSpeechStarted
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventInputAudioBufferSpeechStarted($realtimeServerEventInputAudioBufferSpeechStarted)")
+                Log.d(TAG, "onServerEventInputAudioBufferSpeechStarted($realtimeServerEventInputAudioBufferSpeechStarted)")
             }
 
             override fun onServerEventInputAudioBufferSpeechStopped(
                 realtimeServerEventInputAudioBufferSpeechStopped: RealtimeServerEventInputAudioBufferSpeechStopped
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventInputAudioBufferSpeechStopped($realtimeServerEventInputAudioBufferSpeechStopped)")
+                Log.d(TAG, "onServerEventInputAudioBufferSpeechStopped($realtimeServerEventInputAudioBufferSpeechStopped)")
             }
 
             override fun onServerEventRateLimitsUpdated(
                 realtimeServerEventRateLimitsUpdated: RealtimeServerEventRateLimitsUpdated
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventRateLimitsUpdated($realtimeServerEventRateLimitsUpdated)")
+                Log.d(TAG, "onServerEventRateLimitsUpdated($realtimeServerEventRateLimitsUpdated)")
             }
 
             override fun onServerEventResponseAudioDelta(
                 realtimeServerEventResponseAudioDelta: RealtimeServerEventResponseAudioDelta
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventResponseAudioDelta($realtimeServerEventResponseAudioDelta)")
+                Log.d(TAG, "onServerEventResponseAudioDelta($realtimeServerEventResponseAudioDelta)")
             }
 
             override fun onServerEventResponseAudioDone(
                 realtimeServerEventResponseAudioDone: RealtimeServerEventResponseAudioDone
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventResponseAudioDone($realtimeServerEventResponseAudioDone)")
+                Log.d(TAG, "onServerEventResponseAudioDone($realtimeServerEventResponseAudioDone)")
             }
 
             override fun onServerEventResponseAudioTranscriptDelta(
                 realtimeServerEventResponseAudioTranscriptDelta: RealtimeServerEventResponseAudioTranscriptDelta
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventResponseAudioTranscriptDelta($realtimeServerEventResponseAudioTranscriptDelta)")
+                Log.d(TAG, "onServerEventResponseAudioTranscriptDelta($realtimeServerEventResponseAudioTranscriptDelta)")
             }
 
             override fun onServerEventResponseAudioTranscriptDone(
                 realtimeServerEventResponseAudioTranscriptDone: RealtimeServerEventResponseAudioTranscriptDone
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventResponseAudioTranscriptDone($realtimeServerEventResponseAudioTranscriptDone)")
+                Log.d(TAG, "onServerEventResponseAudioTranscriptDone($realtimeServerEventResponseAudioTranscriptDone)")
             }
 
             override fun onServerEventResponseContentPartAdded(
                 realtimeServerEventResponseContentPartAdded: RealtimeServerEventResponseContentPartAdded
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventResponseContentPartAdded($realtimeServerEventResponseContentPartAdded)")
+                Log.d(TAG, "onServerEventResponseContentPartAdded($realtimeServerEventResponseContentPartAdded)")
             }
 
             override fun onServerEventResponseContentPartDone(
                 realtimeServerEventResponseContentPartDone: RealtimeServerEventResponseContentPartDone
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventResponseContentPartDone($realtimeServerEventResponseContentPartDone)")
+                Log.d(TAG, "onServerEventResponseContentPartDone($realtimeServerEventResponseContentPartDone)")
             }
 
             override fun onServerEventResponseCreated(
                 realtimeServerEventResponseCreated: RealtimeServerEventResponseCreated
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventResponseCreated($realtimeServerEventResponseCreated)")
+                Log.d(TAG, "onServerEventResponseCreated($realtimeServerEventResponseCreated)")
             }
 
             override fun onServerEventResponseDone(
                 realtimeServerEventResponseDone: RealtimeServerEventResponseDone
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventResponseDone($realtimeServerEventResponseDone)")
+                Log.d(TAG, "onServerEventResponseDone($realtimeServerEventResponseDone)")
             }
 
             override fun onServerEventResponseFunctionCallArgumentsDelta(
                 realtimeServerEventResponseFunctionCallArgumentsDelta: RealtimeServerEventResponseFunctionCallArgumentsDelta
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventResponseFunctionCallArgumentsDelta($realtimeServerEventResponseFunctionCallArgumentsDelta)")
+                Log.d(TAG, "onServerEventResponseFunctionCallArgumentsDelta($realtimeServerEventResponseFunctionCallArgumentsDelta)")
             }
 
             override fun onServerEventResponseFunctionCallArgumentsDone(
                 realtimeServerEventResponseFunctionCallArgumentsDone: RealtimeServerEventResponseFunctionCallArgumentsDone
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventResponseFunctionCallArgumentsDone($realtimeServerEventResponseFunctionCallArgumentsDone)")
+                Log.d(TAG, "onServerEventResponseFunctionCallArgumentsDone($realtimeServerEventResponseFunctionCallArgumentsDone)")
             }
 
             override fun onServerEventResponseOutputItemAdded(
                 realtimeServerEventResponseOutputItemAdded: RealtimeServerEventResponseOutputItemAdded
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventResponseOutputItemAdded($realtimeServerEventResponseOutputItemAdded)")
+                Log.d(TAG, "onServerEventResponseOutputItemAdded($realtimeServerEventResponseOutputItemAdded)")
             }
 
             override fun onServerEventResponseOutputItemDone(
                 realtimeServerEventResponseOutputItemDone: RealtimeServerEventResponseOutputItemDone
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventResponseOutputItemDone($realtimeServerEventResponseOutputItemDone)")
+                Log.d(TAG, "onServerEventResponseOutputItemDone($realtimeServerEventResponseOutputItemDone)")
             }
 
             override fun onServerEventResponseTextDelta(
                 realtimeServerEventResponseTextDelta: RealtimeServerEventResponseTextDelta
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventResponseTextDelta($realtimeServerEventResponseTextDelta)")
+                Log.d(TAG, "onServerEventResponseTextDelta($realtimeServerEventResponseTextDelta)")
             }
 
             override fun onServerEventResponseTextDone(
                 realtimeServerEventResponseTextDone: RealtimeServerEventResponseTextDone
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventResponseTextDone($realtimeServerEventResponseTextDone)")
+                Log.d(TAG, "onServerEventResponseTextDone($realtimeServerEventResponseTextDone)")
             }
 
             override fun onServerEventSessionCreated(
                 realtimeServerEventSessionCreated: RealtimeServerEventSessionCreated
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventSessionCreated($realtimeServerEventSessionCreated)")
+                Log.d(TAG, "onServerEventSessionCreated($realtimeServerEventSessionCreated)")
             }
 
             override fun onServerEventSessionUpdated(
                 realtimeServerEventSessionUpdated: RealtimeServerEventSessionUpdated
             ) {
-                Log.d(PushToTalkActivity.TAG, "onServerEventSessionUpdated($realtimeServerEventSessionUpdated)")
+                Log.d(TAG, "onServerEventSessionUpdated($realtimeServerEventSessionUpdated)")
             }
         }
 
@@ -407,22 +409,20 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                 if (showPreferences) {
                     var interceptBack by remember { mutableStateOf(true) }
                     BackHandler(enabled = interceptBack) {
-                        interceptBack = false
                         showPreferences = false
+                        interceptBack = false
                     }
                     PushToTalkPreferenceScreen(pushToTalkViewModel)
                 } else {
-                    if (!isConnectingOrConnected) {
-                        LaunchedEffect(Unit) {
-                            if (pushToTalkViewModel?.autoConnect?.value == true) {
-                                connect()
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    "Auto-connect is disabled",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
+                    LaunchedEffect(Unit) {
+                        if (pushToTalkViewModel?.autoConnect?.value == true) {
+                            connect("LaunchedEffect")
+                        } else {
+                            Toast.makeText(
+                                context,
+                                "Auto-connect is disabled",
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                     }
 
@@ -439,7 +439,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                             checked = isConnectingOrConnected,
                             onCheckedChange = { newValue ->
                                 if (newValue) {
-                                    connect()
+                                    connect("Switch")
                                 } else {
                                     pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
                                         realtimeClient.disconnect()
@@ -506,83 +506,59 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                             enabled = isConnected,
                             onPushToTalkStart = { pttState ->
                                 pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
-                                    Log.d(PushToTalkActivity.TAG, "")
-                                    Log.d(
-                                        PushToTalkActivity.TAG,
-                                        "+onPushToTalkStart: pttState=$pttState"
-                                    )
+                                    Log.d(TAG, "")
+                                    Log.d(TAG, "+onPushToTalkStart: pttState=$pttState")
                                     // 1. Play the start sound
-                                    Log.d(
-                                        PushToTalkActivity.TAG,
-                                        "onPushToTalkStart: playing start sound"
-                                    )
+                                    Log.d(TAG, "onPushToTalkStart: playing start sound")
                                     Utils.playAudioResourceOnce(
                                         context = pushToTalkViewModel.getApplication(),
                                         audioResourceId = R.raw.quindar_nasa_apollo_intro,
                                         volume = 0.2f,
                                     ) {
                                         // 2. Wait for the start sound to finish
-                                        Log.d(
-                                            PushToTalkActivity.TAG,
-                                            "onPushToTalkStart: start sound finished"
-                                        )
+                                        Log.d(TAG, "onPushToTalkStart: start sound finished")
                                         // 3. Open the mic
-                                        Log.d(PushToTalkActivity.TAG, "onPushToTalkStart: opening mic")
+                                        Log.d(TAG, "onPushToTalkStart: opening mic")
                                         realtimeClient.setLocalAudioTrackMicrophoneEnabled(true)
-                                        Log.d(PushToTalkActivity.TAG, "onPushToTalkStart: mic opened")
+                                        Log.d(TAG, "onPushToTalkStart: mic opened")
                                         // 4. Wait for the mic to open successfully
                                         //...
-                                        Log.d(PushToTalkActivity.TAG, "-onPushToTalkStart")
-                                        Log.d(PushToTalkActivity.TAG, "")
+                                        Log.d(TAG, "-onPushToTalkStart")
+                                        Log.d(TAG, "")
                                     }
                                 }
                                 true
                             },
                             onPushToTalkStop = { pttState ->
                                 pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
-                                    Log.d(PushToTalkActivity.TAG, "")
-                                    Log.d(PushToTalkActivity.TAG, "+onPushToTalkStop: pttState=$pttState")
+                                    Log.d(TAG, "")
+                                    Log.d(TAG, "+onPushToTalkStop: pttState=$pttState")
                                     // 1. Close the mic
-                                    Log.d(PushToTalkActivity.TAG, "onPushToTalkStop: closing mic")
+                                    Log.d(TAG, "onPushToTalkStop: closing mic")
                                     realtimeClient.setLocalAudioTrackMicrophoneEnabled(false)
-                                    Log.d(PushToTalkActivity.TAG, "onPushToTalkStop: mic closed")
+                                    Log.d(TAG, "onPushToTalkStop: mic closed")
                                     // 2. Wait for the mic to close successfully
                                     //...
                                     // 3. Send input_audio_buffer.commit
-                                    Log.d(
-                                        PushToTalkActivity.TAG,
-                                        "onPushToTalkStop: sending input_audio_buffer.commit"
-                                    )
+                                    Log.d(TAG, "onPushToTalkStop: sending input_audio_buffer.commit")
                                     realtimeClient.dataSendInputAudioBufferCommit()
-                                    Log.d(
-                                        PushToTalkActivity.TAG,
-                                        "onPushToTalkStop: input_audio_buffer.commit sent"
-                                    )
+                                    Log.d(TAG, "onPushToTalkStop: input_audio_buffer.commit sent")
                                     // 4. Send response.create
-                                    Log.d(
-                                        PushToTalkActivity.TAG,
-                                        "onPushToTalkStop: sending response.create"
-                                    )
+                                    Log.d(TAG, "onPushToTalkStop: sending response.create")
                                     realtimeClient.dataSendResponseCreate()
-                                    Log.d(
-                                        PushToTalkActivity.TAG,
-                                        "onPushToTalkStop: response.create sent"
-                                    )
+                                    Log.d(TAG, "onPushToTalkStop: response.create sent")
                                     // 5. Play the stop sound
-                                    Log.d(PushToTalkActivity.TAG, "onPushToTalkStop: playing stop sound")
+                                    Log.d(TAG, "onPushToTalkStop: playing stop sound")
                                     Utils.playAudioResourceOnce(
                                         context = pushToTalkViewModel.getApplication(),
                                         audioResourceId = R.raw.quindar_nasa_apollo_outro,
                                         volume = 0.2f,
                                     ) {
                                         // 6. Wait for the stop sound to finish
-                                        Log.d(
-                                            PushToTalkActivity.TAG,
-                                            "onPushToTalkStop: stop sound finished"
-                                        )
+                                        Log.d(TAG, "onPushToTalkStop: stop sound finished")
                                         //...
-                                        Log.d(PushToTalkActivity.TAG, "-onPushToTalkStop")
-                                        Log.d(PushToTalkActivity.TAG, "")
+                                        Log.d(TAG, "-onPushToTalkStop")
+                                        Log.d(TAG, "")
                                     }
                                 }
                                 true
