@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
@@ -128,11 +129,13 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
     fun connect() {
         if (pushToTalkViewModel?.isConfigured == true) {
             pushToTalkViewModel.realtimeClient?.also { realtimeClient ->
-                CoroutineScope(Dispatchers.IO).launch {
-                    val ephemeralApiKey = realtimeClient.connect()
-                    Log.d(PushToTalkActivity.TAG, "ephemeralApiKey: $ephemeralApiKey")
-                    if (ephemeralApiKey != null) {
-                        realtimeClient.setLocalAudioTrackMicrophoneEnabled(false)
+                if (!isConnectingOrConnected) {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        val ephemeralApiKey = realtimeClient.connect()
+                        Log.d(PushToTalkActivity.TAG, "ephemeralApiKey: $ephemeralApiKey")
+                        if (ephemeralApiKey != null) {
+                            realtimeClient.setLocalAudioTrackMicrophoneEnabled(false)
+                        }
                     }
                 }
             }
@@ -402,13 +405,24 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                     .padding(innerPadding)
             ) {
                 if (showPreferences) {
+                    var interceptBack by remember { mutableStateOf(true) }
+                    BackHandler(enabled = interceptBack) {
+                        interceptBack = false
+                        showPreferences = false
+                    }
                     PushToTalkPreferenceScreen(pushToTalkViewModel)
                 } else {
-                    LaunchedEffect(Unit) {
-                        if (pushToTalkViewModel?.autoConnect?.value == true) {
-                            connect()
-                        } else {
-                            Toast.makeText(context, "Auto-connect is disabled", Toast.LENGTH_SHORT).show()
+                    if (!isConnectingOrConnected) {
+                        LaunchedEffect(Unit) {
+                            if (pushToTalkViewModel?.autoConnect?.value == true) {
+                                connect()
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    "Auto-connect is disabled",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         }
                     }
 
@@ -603,7 +617,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                                     .size(66.dp)
                                     // Whoever designed this `restart_alt` icon did it wrong.
                                     // They should have centered it in its border instead of having an asymmetric protrusion on the top.
-                                    .offset(y = -2.dp)
+                                    .offset(y = (-2).dp)
                             ) {
                                 Icon(
                                     painter = painterResource(id = R.drawable.baseline_restart_alt_24),

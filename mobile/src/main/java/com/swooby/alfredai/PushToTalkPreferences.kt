@@ -41,14 +41,15 @@ import com.swooby.alfredai.ui.theme.AlfredAITheme
 
 class PushToTalkPreferences(context: Context) {
     companion object {
-        val modelDefault = RealtimeSessionModel.`gpt-4o-mini-realtime-preview-2024-12-17`
-        val voiceDefault = RealtimeSessionVoice.ash
+        private val modelDefault = RealtimeSessionModel.`gpt-4o-mini-realtime-preview-2024-12-17`
+        private val voiceDefault = RealtimeSessionVoice.ash
 
         // No turn_detection; We will be PTTing...
-        val turnDetectionDefault: RealtimeSessionTurnDetection? = null
+        private val turnDetectionDefault: RealtimeSessionTurnDetection? = null
 
         // Costs noticeably more money, so turn it off if we are DEBUG, unless we really need it
-        val inputAudioTranscriptionDefault = if (DEBUG || false) {
+        @Suppress("SimplifyBooleanWithConstants")
+        private val inputAudioTranscriptionDefault = if (DEBUG || false) {
             null
         } else {
             RealtimeSessionInputAudioTranscription(
@@ -97,7 +98,12 @@ class PushToTalkPreferences(context: Context) {
 
     var apiKey: String
         get() {
-            val apiKeyEncrypted = getString("apiKey", BuildConfig.DANGEROUS_OPENAI_API_KEY)
+            var apiKeyEncrypted = getString("apiKey", "")
+            if (apiKeyEncrypted == "") {
+                if (BuildConfig.DANGEROUS_OPENAI_API_KEY.isNotBlank()) {
+                    apiKeyEncrypted = Crypto.hardwareEncrypt(BuildConfig.DANGEROUS_OPENAI_API_KEY)
+                }
+            }
             return Crypto.hardwareDecrypt(apiKeyEncrypted)
         }
         set(value) {
@@ -164,9 +170,17 @@ fun PushToTalkPreferenceScreen(pushToTalkViewModel: PushToTalkViewModel? = null)
         }
 
         item {
+            var redacted by remember { mutableStateOf(true) }
             TextField(
                 label = { Text("OpenAI API Key*") },
                 supportingText = { Text("*required: Locally encrypted & stored only for this app") },
+                visualTransformation = if (redacted) PasswordVisualTransformation() else VisualTransformation.None,
+                trailingIcon = {
+                    val iconRes = if (redacted) R.drawable.baseline_visibility_24 else R.drawable.baseline_visibility_off_24
+                    IconButton(onClick = {redacted = !redacted}){
+                        Icon(painter = painterResource(id = iconRes), "")
+                    }
+                },
                 isError = pushToTalkViewModel?.apiKey?.value?.isBlank() ?: true,
                 value = pushToTalkViewModel?.apiKey?.value ?: "",
                 onValueChange = { pushToTalkViewModel?.onApiKeyChange(it) },
