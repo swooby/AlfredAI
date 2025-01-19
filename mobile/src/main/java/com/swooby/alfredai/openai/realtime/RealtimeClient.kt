@@ -47,6 +47,7 @@ import com.openai.models.RealtimeServerEventSessionUpdated
 import com.openai.models.RealtimeSessionCreateRequest
 import com.openai.models.RealtimeSessionCreateResponse
 import com.openai.models.RealtimeSessionModel
+import com.swooby.alfredai.BuildConfig
 import com.swooby.alfredai.Utils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -176,7 +177,9 @@ class RealtimeClient(private val applicationContext: Context,
          * https://platform.openai.com/docs/api-reference/realtime-sessions/create
          */
         val realtimeSessionCreateResponse: RealtimeSessionCreateResponse? = try {
-            val debugInduceError = true
+            @Suppress("SimplifyBooleanWithConstants", "KotlinConstantConditions")
+            val debugInduceError = BuildConfig.DEBUG && false
+            @Suppress("KotlinConstantConditions")
             if (debugInduceError) {
                 throw UnknownHostException("Unable to resolve host \"api.openai.com\": No address associated with hostname")
             }

@@ -1,7 +1,6 @@
 package com.swooby.alfredai
 
 import android.app.Application
-import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import com.openai.models.RealtimeServerEventConversationCreated
 import com.openai.models.RealtimeServerEventConversationItemCreated
@@ -33,6 +32,8 @@ import com.openai.models.RealtimeServerEventSessionCreated
 import com.openai.models.RealtimeServerEventSessionUpdated
 import com.swooby.alfredai.openai.realtime.RealtimeClient
 import com.swooby.alfredai.openai.realtime.RealtimeClient.RealtimeClientListener
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class PushToTalkViewModel(private val application: Application)
     : AndroidViewModel(application) {
@@ -42,28 +43,34 @@ class PushToTalkViewModel(private val application: Application)
 
     private val prefs = PushToTalkPreferences(application)
 
-    var autoConnect = mutableStateOf(prefs.autoConnect)
-        private set
+    private var _autoConnect = MutableStateFlow(prefs.autoConnect)
+    var autoConnect = _autoConnect.asStateFlow()
 
-    fun onAutoConnectChange(autoConnect: Boolean) {
-        this.autoConnect.value = autoConnect
-    }
+    private var _apiKey = MutableStateFlow(prefs.apiKey)
+    val apiKey = _apiKey.asStateFlow()
 
-    var apiKey = mutableStateOf(prefs.apiKey)
-        private set
+    private var _instructions = MutableStateFlow(prefs.instructions)
+    val instructions = _instructions.asStateFlow()
 
-    fun onApiKeyChange(apiKey: String) {
-        this.apiKey.value = apiKey
-    }
+    private var _temperature = MutableStateFlow(prefs.temperature)
+    val temperature = _temperature.asStateFlow()
 
-    fun onSaveClicked() {
-        prefs.autoConnect = autoConnect.value
-        prefs.apiKey = apiKey.value
+    fun updatePreferences(
+        autoConnect: Boolean,
+        apiKey: String,
+        instructions: String,
+    ) {
+        prefs.autoConnect = autoConnect
+        _autoConnect.value = autoConnect
+        prefs.apiKey = apiKey
+        _apiKey.value = apiKey
+        prefs.instructions = instructions
+        _instructions.value = instructions
         tryInitializeRealtimeClient()
     }
 
     val isConfigured: Boolean
-        get() = prefs.apiKey.isNotBlank()
+        get() = apiKey.value.isNotBlank()
 
     private var _realtimeClient: RealtimeClient? = null
     val realtimeClient: RealtimeClient?
@@ -75,7 +82,7 @@ class PushToTalkViewModel(private val application: Application)
         }
 
     private fun tryInitializeRealtimeClient(): Boolean {
-        if (apiKey.value.isBlank()) {
+        if (!isConfigured) {
             return false
         }
 

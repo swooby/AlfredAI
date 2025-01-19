@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 //noinspection UsingMaterialAndMaterial3Libraries
 import androidx.compose.material.ContentAlpha
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -118,6 +120,8 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
     var showPreferences by remember {
         mutableStateOf(!(pushToTalkViewModel?.isConfigured ?: false))
     }
+    var onSaveButtonClick: (() -> Unit)? by remember { mutableStateOf(null) }
+
     var isConnectingOrConnected by remember {
         mutableStateOf(pushToTalkViewModel?.realtimeClient?.isConnectingOrConnected ?: false)
     }
@@ -408,12 +412,21 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
             topBar = {
                 TopAppBar(
                     modifier = Modifier.background(MaterialTheme.colorScheme.primary),
-                    title = { Text("PushToTalk") },
+                    title = { Text(if (showPreferences) "Preferences" else "PushToTalk") },
+                    navigationIcon = {
+                        if (showPreferences) {
+                            IconButton(onClick = { showPreferences = false }) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back"
+                                )
+                            }
+                        }
+                    },
                     actions = {
                         if (showPreferences) {
                             TextButton(onClick = {
-                                pushToTalkViewModel?.onSaveClicked()
-                                showPreferences = !(pushToTalkViewModel?.isConfigured ?: false)
+                                onSaveButtonClick?.invoke()
                             }) {
                                 Text("Save")
                             }
@@ -433,7 +446,15 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                         showPreferences = false
                         interceptBack = false
                     }
-                    PushToTalkPreferenceScreen(pushToTalkViewModel)
+                    PushToTalkPreferenceScreen(
+                        pushToTalkViewModel,
+                        onSaveSuccess = {
+                            showPreferences = !(pushToTalkViewModel?.isConfigured ?: false)
+                        },
+                        setSaveButtonCallback = {
+                            onSaveButtonClick = it
+                        },
+                    )
                 } else {
                     LaunchedEffect(Unit) {
                         if (pushToTalkViewModel?.autoConnect?.value == true) {
