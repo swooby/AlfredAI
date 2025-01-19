@@ -83,6 +83,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.net.UnknownHostException
 
 class PushToTalkActivity : ComponentActivity() {
     private lateinit var pushToTalkViewModel: PushToTalkViewModel
@@ -159,14 +160,37 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                 isConnectingOrConnected = false
                 isConnected = false
                 val text = when (error) {
+                    is UnknownHostException -> {
+                        /*
+2025-01-17 17:43:21.190 27419-27475 okhttp.OkHttpClient com.swooby.alfredai I  <-- HTTP FAILED: java.net.UnknownHostException: Unable to resolve host "api.openai.com": No address associated with hostname
+2025-01-17 17:43:21.190 27419-27475 RealtimeClient      com.swooby.alfredai E  connect: exception=java.net.UnknownHostException: Unable to resolve host "api.openai.com": No address associated with hostname
+2025-01-17 17:43:21.190 27419-27475 PushToTalkActivity  com.swooby.alfredai D  onError(java.net.UnknownHostException: Unable to resolve host "api.openai.com": No address associated with hostname)
+2025-01-17 17:43:21.191 27419-27475 RealtimeClient      com.swooby.alfredai D  +disconnect()
+2025-01-17 17:43:21.191 27419-27475 RealtimeClient      com.swooby.alfredai D  -disconnect()
+2025-01-17 17:43:21.191 27419-27475 RealtimeClient      com.swooby.alfredai D  connect: ephemeralApiKey=null
+2025-01-17 17:43:21.191 27419-27475 PushToTalkActivity  com.swooby.alfredai D  onError(com.openai.infrastructure.ClientException: No Ephemeral API Key In Response)
+                        */
+                        "Mysterious \"Unable to resolve host\" error! :/"
+                    }
                     is ClientException -> {
-                        val response = error.response as ClientError<*>
-                        val body = response.body
-                        val jsonString = body.toString()
-                        val jsonObject = JSONObject(jsonString)
-                        val jsonError  = jsonObject.getJSONObject("error")
-                        val errorCode = jsonError.getString("code")
-                        "ClientException: ${Utils.quote(errorCode)}"
+                        var message: String? = error.message ?: error.toString()
+                        val response = error.response as? ClientError<*>
+                        if (response != null) {
+                            var expectedJsonBody = response.body
+                            if (expectedJsonBody == null) {
+                                message = response.message
+                            }
+                            if ((expectedJsonBody == null) and (message == null)) {
+                                expectedJsonBody = "{ \"error\": { \"code\": \"-1\" }"
+                            }
+                            if (expectedJsonBody != null) {
+                                val jsonObject = JSONObject(expectedJsonBody.toString())
+                                val jsonError = jsonObject.getJSONObject("error")
+                                val errorCode = jsonError.getString("code")
+                                message = errorCode
+                            }
+                        }
+                        "ClientException: ${Utils.quote(message)}"
                     }
                     else -> "Error: ${error.message}"
                 }

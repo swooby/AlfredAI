@@ -65,6 +65,7 @@ import org.webrtc.RtpReceiver
 import org.webrtc.RtpSender
 import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
+import java.net.UnknownHostException
 import java.nio.ByteBuffer
 
 /**
@@ -175,6 +176,10 @@ class RealtimeClient(private val applicationContext: Context,
          * https://platform.openai.com/docs/api-reference/realtime-sessions/create
          */
         val realtimeSessionCreateResponse: RealtimeSessionCreateResponse? = try {
+            val debugInduceError = true
+            if (debugInduceError) {
+                throw UnknownHostException("Unable to resolve host \"api.openai.com\": No address associated with hostname")
+            }
             realtime.createRealtimeSession(sessionConfig)
         } catch (exception: Exception) {
             log.e("connect: exception=$exception")
@@ -648,6 +653,7 @@ class RealtimeClient(private val applicationContext: Context,
     }
 
     private fun notifyError(error: Exception) {
+        if (!isConnectingOrConnected) return
         listeners.forEach {
             it.onError(error)
         }
@@ -660,6 +666,7 @@ class RealtimeClient(private val applicationContext: Context,
     }
 
     private fun notifyDisconnected() {
+        if (!isConnectingOrConnected) return
         listeners.forEach {
             it.onDisconnected()
         }
