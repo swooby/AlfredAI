@@ -83,6 +83,8 @@ import com.swooby.alfredai.openai.realtime.RealtimeClient
 import com.swooby.alfredai.ui.theme.AlfredAITheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.net.UnknownHostException
@@ -129,12 +131,24 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
         mutableStateOf(pushToTalkViewModel?.realtimeClient?.isConnected ?: false)
     }
 
-    fun connect(caller: String) {
-        Log.d(TAG, "connect(caller=${Utils.quote(caller)})")
+    var isConnectSwitchOn by remember { mutableStateOf(false) }
+    var isConnectSwitchManualOff by remember { mutableStateOf(false) }
+    var jobConnect by remember { mutableStateOf<Job?>(null) }
+
+    fun connect() {
+        Log.d(TAG, "connect()")
         if (pushToTalkViewModel?.isConfigured == true) {
             pushToTalkViewModel.realtimeClient?.also { realtimeClient ->
+                isConnectSwitchOn = true
                 if (!isConnectingOrConnected) {
-                    CoroutineScope(Dispatchers.IO).launch {
+                    isConnectingOrConnected = true
+                    jobConnect = CoroutineScope(Dispatchers.IO).launch {
+                        @Suppress("SimplifyBooleanWithConstants", "KotlinConstantConditions")
+                        val debugDelay = BuildConfig.DEBUG && false
+                        @Suppress("KotlinConstantConditions")
+                        if (debugDelay) {
+                            delay(10_000)
+                        }
                         val ephemeralApiKey = realtimeClient.connect()
                         Log.d(TAG, "ephemeralApiKey: $ephemeralApiKey")
                         if (ephemeralApiKey != null) {
@@ -146,6 +160,32 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
         } else {
             showToast(context, "Not configured", Toast.LENGTH_SHORT)
             showPreferences = true
+        }
+    }
+
+    fun disconnect(
+        isManual: Boolean = false,
+        isClient: Boolean = false,
+    ) {
+        Log.d(TAG, "disconnect(isManual=$isManual, isClient=$isClient)")
+        isConnectSwitchOn = false
+        if (isManual) {
+            isConnectSwitchManualOff = true
+        }
+        isConnectingOrConnected = false
+        isConnected = false
+        jobConnect?.also {
+            Log.d(TAG, "Canceling jobConnect...")
+            it.cancel()
+            jobConnect = null
+            Log.d(TAG, "...jobConnect canceled.")
+        }
+        if (!isClient) {
+            pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
+                Log.d(TAG, "Disconnecting RealtimeClient...")
+                realtimeClient.disconnect()
+                Log.d(TAG, "...RealtimeClient disconnected.")
+            }
         }
     }
 
@@ -161,8 +201,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
 
             override fun onError(error: Exception) {
                 Log.d(TAG, "onError($error)")
-                isConnectingOrConnected = false
-                isConnected = false
+                disconnect(isClient = true)
                 val text = when (error) {
                     is UnknownHostException -> {
                         /*
@@ -206,12 +245,12 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
             override fun onConnected() {
                 Log.d(TAG, "onConnected()")
                 isConnected = true
+                jobConnect = null
             }
 
             override fun onDisconnected() {
                 Log.d(TAG, "onDisconnected()")
-                isConnectingOrConnected = false
-                isConnected = false
+                disconnect(isClient = true)
             }
 
             override fun onBinaryMessageReceived(data: ByteArray): Boolean {
@@ -456,9 +495,14 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                         },
                     )
                 } else {
+                    BackHandler(enabled = jobConnect != null) {
+                        disconnect(isManual = true)
+                    }
                     LaunchedEffect(Unit) {
                         if (pushToTalkViewModel?.autoConnect?.value == true) {
-                            connect("LaunchedEffect")
+                            if (!isConnectSwitchManualOff) {
+                                connect()
+                            }
                         } else {
                             showToast(context, "Auto-connect is disabled", Toast.LENGTH_SHORT)
                         }
@@ -474,14 +518,12 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Switch(
-                            checked = isConnectingOrConnected,
+                            checked = isConnectSwitchOn,
                             onCheckedChange = { newValue ->
                                 if (newValue) {
-                                    connect("Switch")
+                                    connect()
                                 } else {
-                                    pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
-                                        realtimeClient.disconnect()
-                                    }
+                                    disconnect(isManual = true)
                                 }
                             }
                         )
