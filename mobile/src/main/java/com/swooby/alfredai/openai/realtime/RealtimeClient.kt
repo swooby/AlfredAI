@@ -666,7 +666,6 @@ class RealtimeClient(private val applicationContext: Context,
     }
 
     private fun notifyDisconnected() {
-        if (!isConnectingOrConnected) return
         listeners.forEach {
             it.onDisconnected()
         }
