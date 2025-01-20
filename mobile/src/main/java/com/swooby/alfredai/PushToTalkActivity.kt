@@ -1,13 +1,23 @@
 package com.swooby.alfredai
 
+import android.Manifest.permission.RECORD_AUDIO
+import android.app.Activity
+import android.app.AlertDialog
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -47,6 +57,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.constraintlayout.compose.ConstraintLayout
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.core.content.ContextCompat.checkSelfPermission
 import androidx.lifecycle.ViewModelProvider
 import com.openai.infrastructure.ClientError
 import com.openai.infrastructure.ClientException
@@ -78,6 +91,7 @@ import com.openai.models.RealtimeServerEventResponseTextDelta
 import com.openai.models.RealtimeServerEventResponseTextDone
 import com.openai.models.RealtimeServerEventSessionCreated
 import com.openai.models.RealtimeServerEventSessionUpdated
+import com.swooby.alfredai.Utils.quote
 import com.swooby.alfredai.Utils.showToast
 import com.swooby.alfredai.openai.realtime.RealtimeClient
 import com.swooby.alfredai.ui.theme.AlfredAITheme
@@ -118,10 +132,15 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
     val TAG = "PushToTalkScreen"
 
     val context = LocalContext.current
-    val disabledColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.disabled)
 
+    @Suppress(
+        "SimplifyBooleanWithConstants",
+        "KotlinConstantConditions",
+        "KotlinConstantConditions",
+    )
+    val debugForceShowPreferences = BuildConfig.DEBUG && false
     var showPreferences by remember {
-        mutableStateOf(!(pushToTalkViewModel?.isConfigured ?: false))
+        mutableStateOf(!(pushToTalkViewModel?.isConfigured ?: false) && debugForceShowPreferences)
     }
     var onSaveButtonClick: (() -> Unit)? by remember { mutableStateOf(null) }
 
@@ -190,6 +209,59 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
         }
     }
 
+    fun connectIfAutoConnectAndNotManualOff() {
+        if (pushToTalkViewModel?.autoConnect?.value == true) {
+            if (!isConnectSwitchManualOff) {
+                connect()
+            }
+        } else {
+            showToast(context, "Auto-connect is disabled", Toast.LENGTH_SHORT)
+        }
+    }
+
+    var hasAllRequiredPermissions by remember { mutableStateOf(
+        checkSelfPermission(context, RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+    }
+    var requestPermissionLauncher: ActivityResultLauncher<String>? = null
+    requestPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        hasAllRequiredPermissions = isGranted
+        if (isGranted) {
+            Log.d(TAG, "All required permissions granted")
+            connectIfAutoConnectAndNotManualOff()
+        } else {
+            Log.d(TAG, "All required permissions NOT granted")
+            val activity = (context as? Activity)
+            if (activity != null) {
+                if (ActivityCompat.shouldShowRequestPermissionRationale(activity, RECORD_AUDIO)) {
+                    // Show rationale dialog and re-request permission
+                    AlertDialog.Builder(activity)
+                        .setTitle("Permission Required")
+                        .setMessage("This app needs microphone access to provide the feature. Please grant the permission.")
+                        .setPositiveButton("Grant") { _, _ ->
+                            requestPermissionLauncher?.launch(RECORD_AUDIO)
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                } else {
+                    // "Don't ask again" selected. Guide user to settings.
+                    AlertDialog.Builder(activity)
+                        .setTitle("Permission Required")
+                        .setMessage("Microphone permission has been permanently denied. Please enable it in app settings.")
+                        .setPositiveButton("Open Settings") { _, _ ->
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.fromParts("package", activity.packageName, null)
+                            }
+                            activity.startActivity(intent)
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+            }
+        }
+    }
+
     //
     //region RealtimeClientListener
     //
@@ -234,7 +306,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                                 message = errorCode
                             }
                         }
-                        "ClientException: ${Utils.quote(message)}"
+                        "ClientException: ${quote(message)}"
                     }
                     else -> "Error: ${error.message}"
                 }
@@ -261,7 +333,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
             }
 
             override fun onTextMessageReceived(message: String): Boolean {
-                //Log.d(TAG, "onTextMessageReceived(): message=${Utils.quote(message)}")
+                //Log.d(TAG, "onTextMessageReceived(): message=${quote(message)}")
                 //...
                 return false
             }
@@ -445,6 +517,8 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
     //endregion
     //
 
+    val disabledColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.disabled)
+
     AlfredAITheme(dynamicColor = false) {
         Scaffold(modifier = Modifier
             //.border(1.dp, Color.Red)
@@ -500,12 +574,10 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                         disconnect(isManual = true)
                     }
                     LaunchedEffect(Unit) {
-                        if (pushToTalkViewModel?.autoConnect?.value == true) {
-                            if (!isConnectSwitchManualOff) {
-                                connect()
-                            }
+                        if (hasAllRequiredPermissions) {
+                            connectIfAutoConnectAndNotManualOff()
                         } else {
-                            showToast(context, "Auto-connect is disabled", Toast.LENGTH_SHORT)
+                            requestPermissionLauncher.launch(RECORD_AUDIO)
                         }
                     }
 
@@ -522,7 +594,13 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                             checked = isConnectSwitchOn,
                             onCheckedChange = { newValue ->
                                 if (newValue) {
-                                    connect()
+                                    // Re-check here to handle case of coming back from Settings app
+                                    hasAllRequiredPermissions = checkSelfPermission(context, RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                                    if (hasAllRequiredPermissions) {
+                                        connect()
+                                    } else {
+                                        requestPermissionLauncher.launch(RECORD_AUDIO)
+                                    }
                                 } else {
                                     disconnect(isManual = true)
                                 }
