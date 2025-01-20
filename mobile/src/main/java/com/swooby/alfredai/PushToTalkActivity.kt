@@ -114,6 +114,7 @@ class PushToTalkActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
+    @Suppress("LocalVariableName")
     val TAG = "PushToTalkScreen"
 
     val context = LocalContext.current
@@ -190,7 +191,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
     }
 
     //
-    //region realtimeClientListener
+    //region RealtimeClientListener
     //
     DisposableEffect(Unit) {
         val realtimeClientListener = object : RealtimeClient.RealtimeClientListener {
@@ -223,7 +224,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                             if (expectedJsonBody == null) {
                                 message = response.message
                             }
-                            if ((expectedJsonBody == null) and (message == null)) {
+                            if (expectedJsonBody == null && message == null) {
                                 expectedJsonBody = "{ \"error\": { \"code\": \"-1\" }"
                             }
                             if (expectedJsonBody != null) {
@@ -573,7 +574,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
 
                                 else -> {
                                     CircularProgressIndicator(
-                                        progress = { 1f },
+                                        progress = { 0f },
                                         color = disabledColor,
                                         strokeWidth = 6.dp,
                                         modifier = Modifier.size(150.dp)

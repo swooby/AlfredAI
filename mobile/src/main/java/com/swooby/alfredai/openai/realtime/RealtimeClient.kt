@@ -126,6 +126,9 @@ class RealtimeClient(private val applicationContext: Context,
             }
         }
 
+    val isConnecting: Boolean
+        get() = isConnectingOrConnected && !isConnected
+
     /**
      * Send the offer SDP to OpenAI’s Realtime endpoint and get the answer SDP back.
      */
