@@ -30,10 +30,12 @@ import com.openai.models.RealtimeServerEventResponseTextDelta
 import com.openai.models.RealtimeServerEventResponseTextDone
 import com.openai.models.RealtimeServerEventSessionCreated
 import com.openai.models.RealtimeServerEventSessionUpdated
+import com.openai.models.RealtimeSessionCreateRequest
 import com.swooby.alfredai.openai.realtime.RealtimeClient
 import com.swooby.alfredai.openai.realtime.RealtimeClient.RealtimeClientListener
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.math.BigDecimal
 
 class PushToTalkViewModel(private val application: Application)
     : AndroidViewModel(application) {
@@ -55,17 +57,54 @@ class PushToTalkViewModel(private val application: Application)
     private var _temperature = MutableStateFlow(prefs.temperature)
     val temperature = _temperature.asStateFlow()
 
+    private val sessionConfig: RealtimeSessionCreateRequest
+        get() {
+            return RealtimeSessionCreateRequest(
+                modalities = null,
+                model = PushToTalkPreferences.modelDefault,
+                instructions = instructions.value,
+                voice = PushToTalkPreferences.voiceDefault,
+                inputAudioFormat = null,
+                outputAudioFormat = null,
+                inputAudioTranscription = null,
+                turnDetection = PushToTalkPreferences.turnDetectionDefault,
+                tools = null,
+                toolChoice = null,
+                temperature = BigDecimal(temperature.value.toDouble()),
+                maxResponseOutputTokens = null,
+            )
+        }
+
     fun updatePreferences(
         autoConnect: Boolean,
         apiKey: String,
         instructions: String,
+        temperature: Float,
     ) {
         prefs.autoConnect = autoConnect
         _autoConnect.value = autoConnect
-        prefs.apiKey = apiKey
-        _apiKey.value = apiKey
-        prefs.instructions = instructions
-        _instructions.value = instructions
+
+        var reconnectSession = false
+        var updateSession = false
+
+        if (apiKey != this.apiKey.value) {
+            reconnectSession = true
+            prefs.apiKey = apiKey
+            _apiKey.value = apiKey
+        }
+
+        if (instructions != prefs.instructions) {
+            updateSession = true
+            prefs.instructions = instructions
+            _instructions.value = instructions
+        }
+
+        if (temperature != prefs.temperature) {
+            updateSession = true
+            prefs.temperature = temperature
+            _temperature.value = temperature
+        }
+
         tryInitializeRealtimeClient()
     }
 
@@ -91,13 +130,17 @@ class PushToTalkViewModel(private val application: Application)
         _realtimeClient = RealtimeClient(
             application,
             prefs.apiKey,
-            prefs.sessionConfig,
+            sessionConfig,
             debug = DEBUG
         )
         _realtimeClient?.addListener(listener)
 
         return true
     }
+
+    //
+    //region RealtimeClientListener
+    //
 
     private val listeners = mutableListOf<RealtimeClientListener>()
     private val listener = object : RealtimeClientListener {
@@ -337,4 +380,8 @@ class PushToTalkViewModel(private val application: Application)
     fun removeListener(listener: RealtimeClientListener) {
         listeners.remove(listener)
     }
+
+    //
+    //endregion
+    //
 }
