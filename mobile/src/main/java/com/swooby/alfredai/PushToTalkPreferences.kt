@@ -48,6 +48,7 @@ import com.openai.models.RealtimeSessionInputAudioTranscription
 import com.openai.models.RealtimeSessionModel
 import com.openai.models.RealtimeSessionTurnDetection
 import com.openai.models.RealtimeSessionVoice
+import com.swooby.alfredai.AppUtils.annotatedStringFromHtml
 import com.swooby.alfredai.PushToTalkViewModel.Companion.DEBUG
 import com.swooby.alfredai.ui.theme.AlfredAITheme
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -235,7 +236,7 @@ fun PushToTalkPreferenceScreen(
                 tonalElevation = AlertDialogDefaults.TonalElevation
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = Utils.annotatedStringFromHtml(resId = R.string.missing_api_key_instructions))
+                    Text(text = annotatedStringFromHtml(resId = R.string.missing_api_key_instructions))
                     Spacer(modifier = Modifier.height(24.dp))
                     TextButton(
                         onClick = {

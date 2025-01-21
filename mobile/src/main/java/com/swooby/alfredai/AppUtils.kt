@@ -2,7 +2,6 @@ package com.swooby.alfredai
 
 import android.content.Context
 import android.media.MediaPlayer
-import android.util.JsonReader
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.material3.MaterialTheme
@@ -23,39 +22,9 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
-import java.io.IOException
-import java.io.StringReader
-import kotlin.reflect.KClass
 
-object Utils {
-    private val TAG = Utils::class.java.simpleName
-
-    fun quote(value: Any?, typeOnly: Boolean = false): String {
-        if (value == null) {
-            return "null"
-        }
-
-        if (typeOnly) {
-            return getShortClassName(value)
-        }
-
-        if (value is String) {
-            return "\"$value\""
-        }
-
-        if (value is CharSequence) {
-            return "\"$value\""
-        }
-
-        return value.toString()
-    }
-
-    fun getShortClassName(value: Any?): String {
-        return when (value) {
-            is KClass<*> -> value.simpleName ?: "null"
-            else -> value?.javaClass?.simpleName ?: "null"
-        }
-    }
+object AppUtils {
+    private val TAG = AppUtils::class.java.simpleName
 
     fun showToast(context: Context,
                   message: String,
@@ -80,28 +49,6 @@ object Utils {
             }
             start()
         }
-    }
-
-    fun extractValue(key: String, jsonString: String): String? {
-        try {
-            val reader = JsonReader(StringReader(jsonString))
-            reader.beginObject()
-            while (reader.hasNext()) {
-                val name = reader.nextName()
-                if (name == key) {
-                    val type = reader.nextString()
-                    reader.close()
-                    return type
-                } else {
-                    reader.skipValue()
-                }
-            }
-            reader.endObject()
-            reader.close()
-        } catch (e: IOException) {
-            Log.e(TAG, "extractValue: Error parsing JSON: ${e.message}")
-        }
-        return null
     }
 
     @Composable

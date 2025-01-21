@@ -1,12 +1,12 @@
-package com.swooby.alfredai.openai.realtime
+package com.swooby.alfred.common.openai.realtime
 
 import android.util.Log
-import com.swooby.alfredai.Utils
+import com.swooby.alfred.common.Utils.getShortClassName
 import kotlin.reflect.KClass
 
 class RealtimeLog(val TAG: String, var logLevel: Int = Log.DEBUG) {
 
-    constructor(clazz: KClass<*>) : this(Utils.getShortClassName(clazz))
+    constructor(clazz: KClass<*>) : this(getShortClassName(clazz))
 
     fun v(msg: String) {
         if (logLevel <= Log.VERBOSE)

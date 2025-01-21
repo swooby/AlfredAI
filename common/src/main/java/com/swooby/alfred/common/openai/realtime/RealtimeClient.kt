@@ -1,4 +1,4 @@
-package com.swooby.alfredai.openai.realtime
+package com.swooby.alfred.common.openai.realtime
 
 import android.content.Context
 import android.media.AudioDeviceInfo
@@ -47,8 +47,9 @@ import com.openai.models.RealtimeServerEventSessionUpdated
 import com.openai.models.RealtimeSessionCreateRequest
 import com.openai.models.RealtimeSessionCreateResponse
 import com.openai.models.RealtimeSessionModel
-import com.swooby.alfredai.BuildConfig
-import com.swooby.alfredai.Utils
+import com.swooby.alfred.common.Utils.extractValue
+import com.swooby.alfred.common.Utils.quote
+import com.swooby.alfredai.common.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -537,29 +538,29 @@ class RealtimeClient(private val applicationContext: Context,
     fun dataSendInputAudioBufferClear(): Boolean {
         log.d("dataSendInputAudioBufferClear()")
         return dataSend(RealtimeClientEventInputAudioBufferClear(
-            eventId = RealtimeUtils.generateId()
+            eventId = RealtimeUtils.generateId(),
         ))
     }
 
     fun dataSendInputAudioBufferCommit(): Boolean {
         log.d("dataSendInputAudioBufferCommit()")
         return dataSend(RealtimeClientEventInputAudioBufferCommit(
-            eventId = RealtimeUtils.generateId()
+            eventId = RealtimeUtils.generateId(),
         ))
     }
 
     fun dataSendResponseCreate(): Boolean {
         log.d("dataSendResponseCreate()")
         return dataSend(RealtimeClientEventResponseCreate(
-            eventId = RealtimeUtils.generateId()
+            eventId = RealtimeUtils.generateId(),
         ))
     }
 
     fun dataSendResponseCancel(responseId: String? = null): Boolean {
-        log.d("dataSendResponseCancel(responseId=${Utils.quote(responseId)})")
+        log.d("dataSendResponseCancel(responseId=${quote(responseId)})")
         return dataSend(RealtimeClientEventResponseCancel(
             eventId = RealtimeUtils.generateId(),
-            responseId = responseId
+            responseId = responseId,
         ))
     }
 
@@ -690,14 +691,14 @@ class RealtimeClient(private val applicationContext: Context,
     private fun onDataChannelText(message: String) {
         @Suppress("SimplifyBooleanWithConstants", "KotlinConstantConditions")
         if (debug && false) {
-            log.d("onDataChannelText: message(${message.length} chars TEXT)=${Utils.quote(message)}")
+            log.d("onDataChannelText: message(${message.length} chars TEXT)=${quote(message)}")
         }
         listeners.forEach {
             if (it.onTextMessageReceived(message)) return
         }
 
-        val type = Utils.extractValue("type", message)
-        log.d("onDataChannelText: type=${Utils.quote(type)}")
+        val type = extractValue("type", message)
+        log.d("onDataChannelText: type=${quote(type)}")
         // TODO: Consider using reflection to auto-populate the equivalent of the below code...
         when (type) {
             RealtimeServerEventConversationCreated.Type.conversationPeriodCreated.value -> {

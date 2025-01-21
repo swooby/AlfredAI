@@ -58,7 +58,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.constraintlayout.compose.ConstraintLayout
 import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.core.content.ContextCompat.checkSelfPermission
 import androidx.lifecycle.ViewModelProvider
 import com.openai.infrastructure.ClientError
@@ -91,9 +90,10 @@ import com.openai.models.RealtimeServerEventResponseTextDelta
 import com.openai.models.RealtimeServerEventResponseTextDone
 import com.openai.models.RealtimeServerEventSessionCreated
 import com.openai.models.RealtimeServerEventSessionUpdated
-import com.swooby.alfredai.Utils.quote
-import com.swooby.alfredai.Utils.showToast
-import com.swooby.alfredai.openai.realtime.RealtimeClient
+import com.swooby.alfred.common.Utils.quote
+import com.swooby.alfredai.AppUtils.showToast
+import com.swooby.alfred.common.openai.realtime.RealtimeClient
+import com.swooby.alfredai.AppUtils.playAudioResourceOnce
 import com.swooby.alfredai.ui.theme.AlfredAITheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -669,7 +669,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                                     Log.d(TAG, "+onPushToTalkStart: pttState=$pttState")
                                     // 1. Play the start sound
                                     Log.d(TAG, "onPushToTalkStart: playing start sound")
-                                    Utils.playAudioResourceOnce(
+                                    playAudioResourceOnce(
                                         context = pushToTalkViewModel.getApplication(),
                                         audioResourceId = R.raw.quindar_nasa_apollo_intro,
                                         volume = 0.2f,
@@ -708,7 +708,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                                     Log.d(TAG, "onPushToTalkStop: response.create sent")
                                     // 5. Play the stop sound
                                     Log.d(TAG, "onPushToTalkStop: playing stop sound")
-                                    Utils.playAudioResourceOnce(
+                                    playAudioResourceOnce(
                                         context = pushToTalkViewModel.getApplication(),
                                         audioResourceId = R.raw.quindar_nasa_apollo_outro,
                                         volume = 0.2f,
