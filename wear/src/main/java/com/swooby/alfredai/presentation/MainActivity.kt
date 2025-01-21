@@ -1,6 +1,9 @@
 package com.swooby.alfredai.presentation
 
+import android.annotation.SuppressLint
 import android.os.Bundle
+import android.util.Log
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -22,6 +25,10 @@ import com.swooby.alfredai.R
 import com.swooby.alfredai.presentation.theme.AlfredAITheme
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        private const val TAG = "MainActivity"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
@@ -30,6 +37,47 @@ class MainActivity : ComponentActivity() {
             WearApp("Wear")
         }
     }
+
+    @SuppressLint("RestrictedApi")
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        Log.i(TAG, "dispatchKeyEvent(event=$event)")
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_STEM_PRIMARY -> {
+                    Log.i(TAG, "dispatchKeyEvent: hardware button 0")
+                    onHardwareButton(KeyEvent.KEYCODE_STEM_PRIMARY)
+                    return true
+                }
+                KeyEvent.KEYCODE_STEM_1 -> {
+                    Log.i(TAG, "dispatchKeyEvent: hardware button 1")
+                    onHardwareButton(KeyEvent.KEYCODE_STEM_1)
+                    return true
+                }
+
+                KeyEvent.KEYCODE_STEM_2 -> {
+                    Log.i(TAG, "dispatchKeyEvent: hardware button 2")
+                    onHardwareButton(KeyEvent.KEYCODE_STEM_2)
+                    return true
+                }
+
+                KeyEvent.KEYCODE_STEM_3 -> {
+                    Log.i(TAG, "dispatchKeyEvent: hardware button 3")
+                    onHardwareButton(KeyEvent.KEYCODE_STEM_3)
+                    return true
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun onHardwareButton(keyCode: Int) {
+    }
+}
+
+@Preview(device = WearDevices.SMALL_ROUND, showSystemUi = true)
+@Composable
+fun DefaultPreview() {
+    WearApp("Preview Wear")
 }
 
 @Composable
@@ -55,10 +103,4 @@ fun Greeting(greetingName: String) {
         color = MaterialTheme.colors.primary,
         text = stringResource(R.string.hello_world, greetingName)
     )
-}
-
-@Preview(device = WearDevices.SMALL_ROUND, showSystemUi = true)
-@Composable
-fun DefaultPreview() {
-    WearApp("Preview Wear")
 }
