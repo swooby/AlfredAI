@@ -20,9 +20,9 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.swooby.alfredai"
         minSdk = 34
-        targetSdk = 35
+
+        applicationId = "com.swooby.alfredai"
         versionCode = 1
         versionName = "1.0"
 
@@ -84,14 +84,7 @@ dependencies {
 
     implementation(platform(libs.firebase.bom))
 
-    implementation(platform(libs.okhttp3.bom))
-    implementation(libs.okhttp3)
-    implementation(libs.okhttp3.logging.interceptor)
-
-    implementation(libs.webrtc.sdk.android)
-    implementation(libs.moshi.kotlin)
-
     implementation(libs.jsoup)
 
-    implementation(project(":openai-kotlin-client"))
+    implementation(project(":common"))
 }

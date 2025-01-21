@@ -31,8 +31,8 @@ import com.openai.models.RealtimeServerEventResponseTextDone
 import com.openai.models.RealtimeServerEventSessionCreated
 import com.openai.models.RealtimeServerEventSessionUpdated
 import com.openai.models.RealtimeSessionCreateRequest
-import com.swooby.alfredai.openai.realtime.RealtimeClient
-import com.swooby.alfredai.openai.realtime.RealtimeClient.RealtimeClientListener
+import com.swooby.alfred.common.openai.realtime.RealtimeClient
+import com.swooby.alfred.common.openai.realtime.RealtimeClient.RealtimeClientListener
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.math.BigDecimal
