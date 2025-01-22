@@ -31,6 +31,7 @@ import com.openai.models.RealtimeServerEventResponseTextDone
 import com.openai.models.RealtimeServerEventSessionCreated
 import com.openai.models.RealtimeServerEventSessionUpdated
 import com.openai.models.RealtimeSessionCreateRequest
+import com.openai.models.RealtimeSessionInputAudioTranscription
 import com.openai.models.RealtimeSessionModel
 import com.openai.models.RealtimeSessionVoice
 import com.swooby.alfred.common.openai.realtime.RealtimeClient
@@ -67,6 +68,9 @@ class PushToTalkViewModel(private val application: Application)
     private var _voice = MutableStateFlow(prefs.voice)
     val voice = _voice.asStateFlow()
 
+    private var _inputAudioTranscription = MutableStateFlow(prefs.inputAudioTranscription)
+    val inputAudioTranscription = _inputAudioTranscription.asStateFlow()
+
     private var _temperature = MutableStateFlow(prefs.temperature)
     val temperature = _temperature.asStateFlow()
 
@@ -82,7 +86,7 @@ class PushToTalkViewModel(private val application: Application)
                 voice = voice.value,
                 inputAudioFormat = null,
                 outputAudioFormat = null,
-                inputAudioTranscription = null,
+                inputAudioTranscription = inputAudioTranscription.value,
                 turnDetection = PushToTalkPreferences.turnDetectionDefault,
                 tools = null,
                 toolChoice = null,
@@ -97,6 +101,7 @@ class PushToTalkViewModel(private val application: Application)
         model: RealtimeSessionModel,
         instructions: String,
         voice: RealtimeSessionVoice,
+        inputAudioTranscription: RealtimeSessionInputAudioTranscription?,
         temperature: Float,
         maxResponseOutputTokens: Int,
     ): Job? {
@@ -134,6 +139,12 @@ class PushToTalkViewModel(private val application: Application)
             reconnectSession = true
             prefs.voice = voice
             _voice.value = voice
+        }
+
+        if (inputAudioTranscription != prefs.inputAudioTranscription) {
+            updateSession = true
+            prefs.inputAudioTranscription = inputAudioTranscription
+            _inputAudioTranscription.value = inputAudioTranscription
         }
 
         if (temperature != prefs.temperature) {

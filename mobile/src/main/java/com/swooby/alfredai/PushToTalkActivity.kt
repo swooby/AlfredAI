@@ -22,12 +22,18 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 //noinspection UsingMaterialAndMaterial3Libraries
 import androidx.compose.material.ContentAlpha
 import androidx.compose.material.icons.Icons
@@ -46,17 +52,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.constraintlayout.compose.ConstraintLayout
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat.checkSelfPermission
 import androidx.lifecycle.ViewModelProvider
@@ -125,6 +133,11 @@ class PushToTalkActivity : ComponentActivity() {
     }
 }
 
+enum class ConversationSpeaker {
+    Local,
+    Remote,
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
@@ -142,10 +155,16 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
         "KotlinConstantConditions",
         "KotlinConstantConditions",
     )
-    val debugForceAutoConnect = BuildConfig.DEBUG && false
+    val debugForceDontAutoConnect = BuildConfig.DEBUG && false
+    @Suppress(
+        "SimplifyBooleanWithConstants",
+        //"KotlinConstantConditions",
+        "KotlinConstantConditions",
+    )
+    val debugLogConversation = BuildConfig.DEBUG && true
 
     var showPreferences by remember {
-        mutableStateOf(debugForceShowPreferences || !(pushToTalkViewModel?.isConfigured ?: false))
+        mutableStateOf(debugForceShowPreferences || !(pushToTalkViewModel?.isConfigured ?: true))
     }
     var onSaveButtonClick: (() -> Job?)? by remember { mutableStateOf(null) }
 
@@ -217,7 +236,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
     }
 
     fun connectIfAutoConnectAndNotManualOff() {
-        if (debugForceAutoConnect || pushToTalkViewModel?.autoConnect?.value == true) {
+        if (!debugForceDontAutoConnect && pushToTalkViewModel?.autoConnect?.value == true) {
             if (!isConnectSwitchManualOff) {
                 connect()
             }
@@ -269,6 +288,45 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
         }
     }
 
+    data class ConversationItem(
+        val id: String?,
+        val speaker: ConversationSpeaker,
+        val initialText: String
+    ) {
+        var text by mutableStateOf(initialText)
+    }
+
+    val conversationItems = remember { mutableStateListOf<ConversationItem>() }
+    @Suppress(
+        "SimplifyBooleanWithConstants",
+        "KotlinConstantConditions",
+        )
+    if (BuildConfig.DEBUG && false) {
+        fun generateRandomSentence(): String {
+            val subjects = listOf("The cat", "The dog", "The bird", "The fish")
+            val verbs = listOf("jumps", "runs", "flies", "swims")
+            val objects = listOf("over the fence", "in the park", "through the air", "in the water")
+            return "${subjects.random()} ${verbs.random()} ${objects.random()}."
+        }
+
+        for (i in 0..20) {
+            conversationItems.add(ConversationItem(
+                id = "$i",
+                ConversationSpeaker.entries.random(),
+                initialText = generateRandomSentence()
+            ))
+        }
+    }
+    val conversationListState = rememberLazyListState()
+    LaunchedEffect(Unit) {
+        snapshotFlow { conversationItems.lastOrNull()?.text }
+            .collect {
+                if (conversationItems.isNotEmpty()) {
+                    conversationListState.animateScrollToItem(conversationItems.size - 1)
+                }
+            }
+    }
+
     //
     //region RealtimeClientListener
     //
@@ -293,7 +351,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
 2025-01-17 17:43:21.191 27419-27475 RealtimeClient      com.swooby.alfredai D  connect: ephemeralApiKey=null
 2025-01-17 17:43:21.191 27419-27475 PushToTalkActivity  com.swooby.alfredai D  onError(com.openai.infrastructure.ClientException: No Ephemeral API Key In Response)
                         */
-                        "Mysterious \"Unable to resolve host\" error! :/"
+                        "Mysterious \"Unable to resolve host\" error; Try again."
                     }
                     is ClientException -> {
                         var message: String? = error.message ?: error.toString()
@@ -348,43 +406,74 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
             override fun onServerEventConversationCreated(
                 realtimeServerEventConversationCreated: RealtimeServerEventConversationCreated
             ) {
-                Log.d(TAG, "onServerEventConversationCreated($realtimeServerEventConversationCreated)")
+                if (debugLogConversation) {
+                    Log.d(TAG, "onServerEventConversationCreated($realtimeServerEventConversationCreated)")
+                }
             }
 
             override fun onServerEventConversationItemCreated(
                 realtimeServerEventConversationItemCreated: RealtimeServerEventConversationItemCreated
             ) {
-                Log.d(TAG, "onServerEventConversationItemCreated($realtimeServerEventConversationItemCreated)")
+                if (debugLogConversation) {
+                    Log.d(TAG, "onServerEventConversationItemCreated($realtimeServerEventConversationItemCreated)")
+                }
             }
 
             override fun onServerEventConversationItemDeleted(
                 realtimeServerEventConversationItemDeleted: RealtimeServerEventConversationItemDeleted
             ) {
-                Log.d(TAG, "onServerEventConversationItemDeleted($realtimeServerEventConversationItemDeleted)")
+                if (debugLogConversation) {
+                    Log.d(TAG, "onServerEventConversationItemDeleted($realtimeServerEventConversationItemDeleted)")
+                }
             }
 
             override fun onServerEventConversationItemInputAudioTranscriptionCompleted(
                 realtimeServerEventConversationItemInputAudioTranscriptionCompleted: RealtimeServerEventConversationItemInputAudioTranscriptionCompleted
             ) {
-                Log.d(TAG, "onServerEventConversationItemInputAudioTranscriptionCompleted($realtimeServerEventConversationItemInputAudioTranscriptionCompleted)")
+                if (debugLogConversation) {
+                    Log.d(TAG, "onServerEventConversationItemInputAudioTranscriptionCompleted($realtimeServerEventConversationItemInputAudioTranscriptionCompleted)")
+                }
+                val id = realtimeServerEventConversationItemInputAudioTranscriptionCompleted.itemId
+                val transcript = realtimeServerEventConversationItemInputAudioTranscriptionCompleted.transcript.trim() // DO TRIM!
+                if (debugLogConversation) {
+                    Log.w(TAG, "onServerEventConversationItemInputAudioTranscriptionCompleted: conversationItems.add(ConversationItem(id=${quote(id)}, initialText=${quote(transcript)}")
+                }
+                if (transcript.isNotBlank()) {
+                    conversationItems.add(
+                        ConversationItem(
+                            id = id,
+                            speaker = ConversationSpeaker.Local,
+                            initialText = transcript
+                        )
+                    )
+                }
             }
 
             override fun onServerEventConversationItemInputAudioTranscriptionFailed(
                 realtimeServerEventConversationItemInputAudioTranscriptionFailed: RealtimeServerEventConversationItemInputAudioTranscriptionFailed
             ) {
-                Log.d(TAG, "onServerEventConversationItemInputAudioTranscriptionFailed($realtimeServerEventConversationItemInputAudioTranscriptionFailed)")
+                if (debugLogConversation) {
+                    Log.d(TAG, "onServerEventConversationItemInputAudioTranscriptionFailed($realtimeServerEventConversationItemInputAudioTranscriptionFailed)")
+                }
             }
 
             override fun onServerEventConversationItemTruncated(
                 realtimeServerEventConversationItemTruncated: RealtimeServerEventConversationItemTruncated
             ) {
-                Log.d(TAG, "onServerEventConversationItemTruncated($realtimeServerEventConversationItemTruncated)")
+                if (debugLogConversation) {
+                    Log.d(TAG, "onServerEventConversationItemTruncated($realtimeServerEventConversationItemTruncated)")
+                }
             }
 
             override fun onServerEventError(
                 realtimeServerEventError: RealtimeServerEventError
             ) {
                 Log.d(TAG, "onServerEventError($realtimeServerEventError)")
+                val error = realtimeServerEventError.error
+                val text = error.message
+                CoroutineScope(Dispatchers.Main).launch {
+                    showToast(context, text, Toast.LENGTH_LONG)
+                }
             }
 
             override fun onServerEventInputAudioBufferCleared(
@@ -432,37 +521,90 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
             override fun onServerEventResponseAudioTranscriptDelta(
                 realtimeServerEventResponseAudioTranscriptDelta: RealtimeServerEventResponseAudioTranscriptDelta
             ) {
-                Log.d(TAG, "onServerEventResponseAudioTranscriptDelta($realtimeServerEventResponseAudioTranscriptDelta)")
+                if (debugLogConversation) {
+                    Log.d(TAG, "onServerEventResponseAudioTranscriptDelta($realtimeServerEventResponseAudioTranscriptDelta)")
+                }
+                val id = realtimeServerEventResponseAudioTranscriptDelta.itemId
+                val delta = realtimeServerEventResponseAudioTranscriptDelta.delta // DO **NOT** TRIM!
+
+                // Append this delta to any current in progress conversation,
+                // or create a new conversation
+                val index = conversationItems.indexOfFirst { it.id == id }
+                if (debugLogConversation) {
+                    Log.w(TAG, "onServerEventResponseAudioTranscriptDelta: id=$id, delta=$delta, index=$index")
+                }
+                if (index == -1) {
+                    val conversationItem = ConversationItem(id=id, speaker = ConversationSpeaker.Remote, initialText = delta)
+                    if (debugLogConversation) {
+                        Log.w(TAG, "conversationItems.add($conversationItem)")
+                    }
+                    conversationItems.add(conversationItem)
+                } else {
+                    val conversationItem = conversationItems[index]
+                    conversationItem.text += delta
+                    if (debugLogConversation) {
+                        Log.w(TAG, "conversationItems.set($index, $conversationItem)")
+                    }
+                    conversationItems[index] = conversationItem
+                }
             }
 
             override fun onServerEventResponseAudioTranscriptDone(
                 realtimeServerEventResponseAudioTranscriptDone: RealtimeServerEventResponseAudioTranscriptDone
             ) {
-                Log.d(TAG, "onServerEventResponseAudioTranscriptDone($realtimeServerEventResponseAudioTranscriptDone)")
+                if (debugLogConversation) {
+                    Log.d(TAG, "onServerEventResponseAudioTranscriptDone($realtimeServerEventResponseAudioTranscriptDone)")
+                }
             }
 
             override fun onServerEventResponseContentPartAdded(
                 realtimeServerEventResponseContentPartAdded: RealtimeServerEventResponseContentPartAdded
             ) {
-                Log.d(TAG, "onServerEventResponseContentPartAdded($realtimeServerEventResponseContentPartAdded)")
+                if (debugLogConversation) {
+                    Log.d(TAG, "onServerEventResponseContentPartAdded($realtimeServerEventResponseContentPartAdded)")
+                }
             }
 
             override fun onServerEventResponseContentPartDone(
                 realtimeServerEventResponseContentPartDone: RealtimeServerEventResponseContentPartDone
             ) {
-                Log.d(TAG, "onServerEventResponseContentPartDone($realtimeServerEventResponseContentPartDone)")
+                if (debugLogConversation) {
+                    Log.d(TAG, "onServerEventResponseContentPartDone($realtimeServerEventResponseContentPartDone)")
+                }
             }
 
             override fun onServerEventResponseCreated(
                 realtimeServerEventResponseCreated: RealtimeServerEventResponseCreated
             ) {
-                Log.d(TAG, "onServerEventResponseCreated($realtimeServerEventResponseCreated)")
+                if (debugLogConversation) {
+                    Log.d(TAG, "onServerEventResponseCreated($realtimeServerEventResponseCreated)")
+                }
             }
 
             override fun onServerEventResponseDone(
                 realtimeServerEventResponseDone: RealtimeServerEventResponseDone
             ) {
-                Log.d(TAG, "onServerEventResponseDone($realtimeServerEventResponseDone)")
+                if (debugLogConversation) {
+                    Log.d(TAG, "onServerEventResponseDone($realtimeServerEventResponseDone)")
+                }
+                realtimeServerEventResponseDone.response.output?.forEach { outputConversationItem ->
+                    if (debugLogConversation) {
+                        Log.w(TAG, "onServerEventResponseDone: outputConversationItem=$outputConversationItem")
+                    }
+                    val id = outputConversationItem.id ?: return@forEach
+                    val index = conversationItems.indexOfFirst { it.id == id }
+                    if (index != -1) {
+                        val conversationItem = conversationItems[index]
+                        if (debugLogConversation) {
+                            Log.w(TAG, "onServerEventResponseDone: removing $conversationItem at index=$index")
+                        }
+                        conversationItems.removeAt(index)
+                        if (debugLogConversation) {
+                            Log.w(TAG, "onServerEventResponseDone: adding $conversationItem at end")
+                        }
+                        conversationItems.add(conversationItem)
+                    }
+                }
             }
 
             override fun onServerEventResponseFunctionCallArgumentsDelta(
@@ -528,7 +670,6 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
 
     AlfredAITheme(dynamicColor = false) {
         Scaffold(modifier = Modifier
-            //.border(1.dp, Color.Red)
             .fillMaxSize(),
             topBar = {
                 TopAppBar(
@@ -556,10 +697,11 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                 )
             }
         ) { innerPadding ->
-            ConstraintLayout(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
+                    .padding(innerPadding),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 if (showPreferences) {
                     var interceptBack by remember { mutableStateOf(true) }
@@ -588,13 +730,77 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                         }
                     }
 
-                    val (rowConnectSettings, buttonPushToTalk, rowStopReset) = createRefs()
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .border(1.dp, Color.LightGray, shape = RoundedCornerShape(8.dp))
+                            .fillMaxWidth()
+                            .padding(8.dp)
+                        ,
+                        horizontalArrangement = Arrangement.spacedBy(24.dp)
+                    ) {
+                        Column {
+                            Row {
+                                Text(text = "Conversation:")
+                            }
+                            Row {
+                                LazyColumn(
+                                    modifier = Modifier
+                                        .border(1.dp, Color.LightGray, shape = RoundedCornerShape(8.dp))
+                                        .fillMaxSize()
+                                    ,
+                                    contentPadding = PaddingValues(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    state = conversationListState,
+                                ) {
+                                    items(
+                                        count = conversationItems.size,
+                                    ) { index ->
+                                        val item = conversationItems[index]
+                                        val paddingAmount = 60.dp
+                                        val modifier: Modifier
+                                        val textAlign: TextAlign
+                                        when (item.speaker) {
+                                            ConversationSpeaker.Local -> {
+                                                modifier = Modifier
+                                                    .padding(start = paddingAmount)
+                                                textAlign = TextAlign.End
+                                            }
+                                            ConversationSpeaker.Remote -> {
+                                                modifier = Modifier
+                                                    .padding(end = paddingAmount)
+                                                textAlign = TextAlign.Start
+                                            }
+                                        }
+                                        Row(
+                                            modifier = Modifier
+                                                .then(modifier)
+                                            ,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .border(1.dp, Color.Gray, shape = RoundedCornerShape(8.dp))
+                                                    .padding(8.dp)
+                                                ,
+                                            ) {
+                                                Text(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                    ,
+                                                    text = item.text,
+                                                    textAlign = textAlign,
+
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     Row(
-                        modifier = Modifier.constrainAs(rowConnectSettings) {
-                            bottom.linkTo(buttonPushToTalk.top, margin = 24.dp)
-                            centerHorizontallyTo(parent)
-                        },
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Switch(
@@ -626,118 +832,109 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                         }
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .size(150.dp)
-                            //.border(1.dp, Color.Green)
-                            .constrainAs(buttonPushToTalk) {
-                                centerTo(parent)
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Row {
                         Box(
                             modifier = Modifier
-                            //.border(1.dp, Color.Magenta)
+                                .size(150.dp)
+                            ,
+                            contentAlignment = Alignment.Center
                         ) {
-                            when {
-                                isConnected -> {
-                                    CircularProgressIndicator(
-                                        progress = { 1f },
-                                        color = Color.Green,
-                                        strokeWidth = 6.dp,
-                                        modifier = Modifier.size(150.dp)
-                                    )
-                                }
+                            Box {
+                                when {
+                                    isConnected -> {
+                                        CircularProgressIndicator(
+                                            progress = { 1f },
+                                            color = Color.Green,
+                                            strokeWidth = 6.dp,
+                                            modifier = Modifier.size(150.dp)
+                                        )
+                                    }
 
-                                isConnectingOrConnected -> {
-                                    CircularProgressIndicator(
-                                        color = MaterialTheme.colorScheme.primary,
-                                        strokeWidth = 6.dp,
-                                        modifier = Modifier.size(150.dp)
-                                    )
-                                }
+                                    isConnectingOrConnected -> {
+                                        CircularProgressIndicator(
+                                            color = MaterialTheme.colorScheme.primary,
+                                            strokeWidth = 6.dp,
+                                            modifier = Modifier.size(150.dp)
+                                        )
+                                    }
 
-                                else -> {
-                                    CircularProgressIndicator(
-                                        progress = { 0f },
-                                        color = disabledColor,
-                                        strokeWidth = 6.dp,
-                                        modifier = Modifier.size(150.dp)
-                                    )
+                                    else -> {
+                                        CircularProgressIndicator(
+                                            progress = { 0f },
+                                            color = disabledColor,
+                                            strokeWidth = 6.dp,
+                                            modifier = Modifier.size(150.dp)
+                                        )
+                                    }
                                 }
                             }
-                        }
 
-                        PushToTalkButton(
-                            enabled = isConnected,
-                            onPushToTalkStart = { pttState ->
-                                pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
-                                    Log.d(TAG, "")
-                                    Log.d(TAG, "+onPushToTalkStart: pttState=$pttState")
-                                    // 1. Play the start sound
-                                    Log.d(TAG, "onPushToTalkStart: playing start sound")
-                                    playAudioResourceOnce(
-                                        context = pushToTalkViewModel.getApplication(),
-                                        audioResourceId = R.raw.quindar_nasa_apollo_intro,
-                                        volume = 0.2f,
-                                    ) {
-                                        // 2. Wait for the start sound to finish
-                                        Log.d(TAG, "onPushToTalkStart: start sound finished")
-                                        // 3. Open the mic
-                                        Log.d(TAG, "onPushToTalkStart: opening mic")
-                                        realtimeClient.setLocalAudioTrackMicrophoneEnabled(true)
-                                        Log.d(TAG, "onPushToTalkStart: mic opened")
-                                        // 4. Wait for the mic to open successfully
-                                        //...
-                                        Log.d(TAG, "-onPushToTalkStart")
+                            PushToTalkButton(
+                                enabled = isConnected,
+                                onPushToTalkStart = { pttState ->
+                                    pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
                                         Log.d(TAG, "")
+                                        Log.d(TAG, "+onPushToTalkStart: pttState=$pttState")
+                                        // 1. Play the start sound
+                                        Log.d(TAG, "onPushToTalkStart: playing start sound")
+                                        playAudioResourceOnce(
+                                            context = pushToTalkViewModel.getApplication(),
+                                            audioResourceId = R.raw.quindar_nasa_apollo_intro,
+                                            volume = 0.2f,
+                                        ) {
+                                            // 2. Wait for the start sound to finish
+                                            Log.d(TAG, "onPushToTalkStart: start sound finished")
+                                            // 3. Open the mic
+                                            Log.d(TAG, "onPushToTalkStart: opening mic")
+                                            realtimeClient.setLocalAudioTrackMicrophoneEnabled(true)
+                                            Log.d(TAG, "onPushToTalkStart: mic opened")
+                                            // 4. Wait for the mic to open successfully
+                                            //...
+                                            Log.d(TAG, "-onPushToTalkStart")
+                                            Log.d(TAG, "")
+                                        }
                                     }
-                                }
-                                true
-                            },
-                            onPushToTalkStop = { pttState ->
-                                pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
-                                    Log.d(TAG, "")
-                                    Log.d(TAG, "+onPushToTalkStop: pttState=$pttState")
-                                    // 1. Close the mic
-                                    Log.d(TAG, "onPushToTalkStop: closing mic")
-                                    realtimeClient.setLocalAudioTrackMicrophoneEnabled(false)
-                                    Log.d(TAG, "onPushToTalkStop: mic closed")
-                                    // 2. Wait for the mic to close successfully
-                                    //...
-                                    // 3. Send input_audio_buffer.commit
-                                    Log.d(TAG, "onPushToTalkStop: sending input_audio_buffer.commit")
-                                    realtimeClient.dataSendInputAudioBufferCommit()
-                                    Log.d(TAG, "onPushToTalkStop: input_audio_buffer.commit sent")
-                                    // 4. Send response.create
-                                    Log.d(TAG, "onPushToTalkStop: sending response.create")
-                                    realtimeClient.dataSendResponseCreate()
-                                    Log.d(TAG, "onPushToTalkStop: response.create sent")
-                                    // 5. Play the stop sound
-                                    Log.d(TAG, "onPushToTalkStop: playing stop sound")
-                                    playAudioResourceOnce(
-                                        context = pushToTalkViewModel.getApplication(),
-                                        audioResourceId = R.raw.quindar_nasa_apollo_outro,
-                                        volume = 0.2f,
-                                    ) {
-                                        // 6. Wait for the stop sound to finish
-                                        Log.d(TAG, "onPushToTalkStop: stop sound finished")
-                                        //...
-                                        Log.d(TAG, "-onPushToTalkStop")
+                                    true
+                                },
+                                onPushToTalkStop = { pttState ->
+                                    pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
                                         Log.d(TAG, "")
+                                        Log.d(TAG, "+onPushToTalkStop: pttState=$pttState")
+                                        // 1. Close the mic
+                                        Log.d(TAG, "onPushToTalkStop: closing mic")
+                                        realtimeClient.setLocalAudioTrackMicrophoneEnabled(false)
+                                        Log.d(TAG, "onPushToTalkStop: mic closed")
+                                        // 2. Wait for the mic to close successfully
+                                        //...
+                                        // 3. Send input_audio_buffer.commit
+                                        Log.d(TAG, "onPushToTalkStop: sending input_audio_buffer.commit")
+                                        realtimeClient.dataSendInputAudioBufferCommit()
+                                        Log.d(TAG, "onPushToTalkStop: input_audio_buffer.commit sent")
+                                        // 4. Send response.create
+                                        Log.d(TAG, "onPushToTalkStop: sending response.create")
+                                        realtimeClient.dataSendResponseCreate()
+                                        Log.d(TAG, "onPushToTalkStop: response.create sent")
+                                        // 5. Play the stop sound
+                                        Log.d(TAG, "onPushToTalkStop: playing stop sound")
+                                        playAudioResourceOnce(
+                                            context = pushToTalkViewModel.getApplication(),
+                                            audioResourceId = R.raw.quindar_nasa_apollo_outro,
+                                            volume = 0.2f,
+                                        ) {
+                                            // 6. Wait for the stop sound to finish
+                                            Log.d(TAG, "onPushToTalkStop: stop sound finished")
+                                            //...
+                                            Log.d(TAG, "-onPushToTalkStop")
+                                            Log.d(TAG, "")
+                                        }
                                     }
-                                }
-                                true
-                            },
-                        )
+                                    true
+                                },
+                            )
+                        }
                     }
 
                     Row(
-                        modifier = Modifier
-                            .constrainAs(rowStopReset) {
-                                top.linkTo(buttonPushToTalk.bottom, margin = 24.dp)
-                                centerHorizontallyTo(parent)
-                            },
                         horizontalArrangement = Arrangement.spacedBy(24.dp)
                     ) {
                         Box(
@@ -802,7 +999,6 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                                     contentDescription = "Stop",
                                     modifier = Modifier
                                         .size(50.dp)
-                                    //.border(1.dp, Color.Magenta)
                                 )
                             }
                         }

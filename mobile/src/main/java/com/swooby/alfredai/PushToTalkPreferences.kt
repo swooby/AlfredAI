@@ -46,7 +46,6 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.openai.models.RealtimeSessionCreateRequest
 import com.openai.models.RealtimeSessionInputAudioTranscription
 import com.openai.models.RealtimeSessionMaxResponseOutputTokens
 import com.openai.models.RealtimeSessionModel
@@ -54,12 +53,10 @@ import com.openai.models.RealtimeSessionTurnDetection
 import com.openai.models.RealtimeSessionVoice
 import com.swooby.alfredai.AppUtils.annotatedStringFromHtml
 import com.swooby.alfredai.PushToTalkPreferences.Companion.MAX_RESPONSE_OUTPUT_TOKENS
-import com.swooby.alfredai.PushToTalkViewModel.Companion.DEBUG
 import com.swooby.alfredai.ui.theme.AlfredAITheme
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.math.BigDecimal
 
 class PushToTalkPreferences(context: Context) {
     companion object {
@@ -88,15 +85,8 @@ class PushToTalkPreferences(context: Context) {
 
         val voiceDefault = RealtimeSessionVoice.ash
 
-        // Costs noticeably more money, so turn it off if we are DEBUG, unless we really need it
-        @Suppress("SimplifyBooleanWithConstants")
-        val inputAudioTranscriptionDefault = if (DEBUG || false) {
-            null
-        } else {
-            RealtimeSessionInputAudioTranscription(
-                model = RealtimeSessionInputAudioTranscription.Model.`whisper-1`
-            )
-        }
+        // Transcription costs noticeably more money, so turn it off and enable in Preferences if we really want it
+        val inputAudioTranscriptionDefault = null
 
         // No turn_detection; We will be PTTing...
         val turnDetectionDefault: RealtimeSessionTurnDetection? = null
@@ -221,6 +211,16 @@ class PushToTalkPreferences(context: Context) {
             putString("voice", value.name)
         }
 
+    var inputAudioTranscription: RealtimeSessionInputAudioTranscription?
+        get() {
+            return getString("inputAudioTranscription", "").let {
+                if (it.isBlank()) null else RealtimeSessionInputAudioTranscription(model = RealtimeSessionInputAudioTranscription.Model.valueOf(it))
+            }
+        }
+        set(value) {
+            putString("inputAudioTranscription", value?.model?.name ?: "")
+        }
+
     var temperature: Float
         get() = getFloat("temperature", temperatureDefault)
         set(value) = putFloat("temperature", value)
@@ -268,6 +268,7 @@ fun PushToTalkPreferenceScreen(
     val initialModel by (pushToTalkViewModel?.model ?: MutableStateFlow(PushToTalkPreferences.modelDefault).asStateFlow()).collectAsState()
     val initialInstructions by (pushToTalkViewModel?.instructions ?: MutableStateFlow(PushToTalkPreferences.instructionsDefault).asStateFlow()).collectAsState()
     val initialVoice by (pushToTalkViewModel?.voice ?: MutableStateFlow(PushToTalkPreferences.voiceDefault).asStateFlow()).collectAsState()
+    val initialInputAudioTranscription by (pushToTalkViewModel?.inputAudioTranscription ?: MutableStateFlow(PushToTalkPreferences.inputAudioTranscriptionDefault).asStateFlow()).collectAsState()
     val initialTemperature by (pushToTalkViewModel?.temperature ?: MutableStateFlow(PushToTalkPreferences.temperatureDefault).asStateFlow()).collectAsState()
     val initialMaxResponseOutputTokens by (pushToTalkViewModel?.maxResponseOutputTokens ?: MutableStateFlow(PushToTalkPreferences.maxResponseOutputTokensDefault).asStateFlow()).collectAsState()
 
@@ -276,6 +277,7 @@ fun PushToTalkPreferenceScreen(
     var editedModel by remember { mutableStateOf(initialModel) }
     var editedInstructions by remember { mutableStateOf(initialInstructions) }
     var editedVoice by remember { mutableStateOf(initialVoice) }
+    var editedInputAudioTranscription by remember { mutableStateOf(initialInputAudioTranscription) }
     var editedTemperature by remember { mutableStateOf(initialTemperature) }
     var editedMaxResponseOutputTokens by remember { mutableStateOf(initialMaxResponseOutputTokens) }
 
@@ -288,6 +290,7 @@ fun PushToTalkPreferenceScreen(
             editedModel,
             editedInstructions,
             editedVoice,
+            editedInputAudioTranscription,
             editedTemperature,
             editedMaxResponseOutputTokens,
         )
@@ -440,6 +443,54 @@ fun PushToTalkPreferenceScreen(
                     }
                 }
             }
+        }
+
+        item {
+            var expanded by remember { mutableStateOf(false) }
+            ExposedDropdownMenuBox(
+                expanded = false,
+                onExpandedChange = { expanded = !expanded }
+            ) {
+                TextField(
+                    readOnly = true,
+                    value = editedInputAudioTranscription?.model?.name ?: "None",
+                    onValueChange = { /* read-only; ignore */ },
+                    label = { Text("Input Audio Transcription") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(type = MenuAnchorType.PrimaryNotEditable, enabled = true)
+                )
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("None") },
+                        onClick = {
+                            editedInputAudioTranscription = null
+                            expanded = false
+                        }
+                    )
+                    RealtimeSessionInputAudioTranscription.Model.entries.forEach {
+                        DropdownMenuItem(
+                            text = { Text(it.name) },
+                            onClick = {
+                                editedInputAudioTranscription =
+                                    RealtimeSessionInputAudioTranscription(model = it)
+                                expanded = false
+                            }
+                        )
+                    }
+                }
+            }
+            Text(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    ,
+                text = "Enabling Input Audio Transcription adds more cost.",
+                style = MaterialTheme.typography.bodySmall
+            )
         }
 
         item {
