@@ -25,11 +25,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -692,6 +694,34 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                             }) {
                                 Text("Save")
                             }
+                        } else {
+                            Switch(
+                                checked = isConnectSwitchOn,
+                                onCheckedChange = { newValue ->
+                                    if (newValue) {
+                                        // Re-check here to handle case of coming back from Settings app
+                                        hasAllRequiredPermissions = checkSelfPermission(context, RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                                        if (hasAllRequiredPermissions) {
+                                            connect()
+                                        } else {
+                                            requestPermissionLauncher.launch(RECORD_AUDIO)
+                                        }
+                                    } else {
+                                        disconnect(isManual = true)
+                                    }
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            IconButton(
+                                onClick = {
+                                    showPreferences = true
+                                }
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.baseline_settings_24),
+                                    contentDescription = "Settings"
+                                )
+                            }
                         }
                     }
                 )
@@ -730,6 +760,9 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                         }
                     }
 
+                    //
+                    // Conversation
+                    //
                     Row(
                         modifier = Modifier
                             .weight(1f)
@@ -800,39 +833,57 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                         }
                     }
 
+                    //
+                    // Reset, PushToTalk, Stop
+                    //
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        modifier = Modifier
+                            .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp)
                     ) {
-                        Switch(
-                            checked = isConnectSwitchOn,
-                            onCheckedChange = { newValue ->
-                                if (newValue) {
-                                    // Re-check here to handle case of coming back from Settings app
-                                    hasAllRequiredPermissions = checkSelfPermission(context, RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-                                    if (hasAllRequiredPermissions) {
-                                        connect()
-                                    } else {
-                                        requestPermissionLauncher.launch(RECORD_AUDIO)
-                                    }
-                                } else {
-                                    disconnect(isManual = true)
-                                }
-                            }
-                        )
-
-                        IconButton(
-                            onClick = {
-                                showPreferences = true
-                            }
+                        //
+                        // Reset
+                        //
+                        Box(
+                            modifier = Modifier
+                                .border(
+                                    4.dp,
+                                    if (isConnected) MaterialTheme.colorScheme.primary else disabledColor,
+                                    shape = CircleShape
+                                )
+                            ,
                         ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.baseline_settings_24),
-                                contentDescription = "Settings"
-                            )
+                            IconButton(
+                                enabled = isConnected,
+                                onClick = {
+                                    if (true) {
+                                        showToast(context, "Reset Not Yet Implemented", Toast.LENGTH_SHORT)
+                                    } else {
+                                        pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
+                                            realtimeClient.dataSendInputAudioBufferClear()
+                                        }
+                                        conversationItems.clear()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(66.dp)
+                                    // Whoever designed this `restart_alt` icon did it wrong.
+                                    // They should have centered it in its border instead of having an asymmetric protrusion on the top.
+                                    .offset(y = (-2).dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.baseline_restart_alt_24),
+                                    contentDescription = "Reset",
+                                    modifier = Modifier
+                                        .size(50.dp)
+                                )
+                            }
                         }
-                    }
 
-                    Row {
+                        Spacer(modifier = Modifier.weight(1f))
+
+                        //
+                        // PushToTalk
+                        //
                         Box(
                             modifier = Modifier
                                 .size(150.dp)
@@ -849,7 +900,6 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                                             modifier = Modifier.size(150.dp)
                                         )
                                     }
-
                                     isConnectingOrConnected -> {
                                         CircularProgressIndicator(
                                             color = MaterialTheme.colorScheme.primary,
@@ -857,7 +907,6 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                                             modifier = Modifier.size(150.dp)
                                         )
                                     }
-
                                     else -> {
                                         CircularProgressIndicator(
                                             progress = { 0f },
@@ -868,7 +917,6 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                                     }
                                 }
                             }
-
                             PushToTalkButton(
                                 enabled = isConnected,
                                 onPushToTalkStart = { pttState ->
@@ -932,11 +980,12 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                                 },
                             )
                         }
-                    }
 
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(24.dp)
-                    ) {
+                        Spacer(modifier = Modifier.weight(1f))
+
+                        //
+                        // Stop
+                        //
                         Box(
                             modifier = Modifier
                                 .border(
@@ -944,41 +993,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                                     if (isConnected) MaterialTheme.colorScheme.primary else disabledColor,
                                     shape = CircleShape
                                 )
-                        ) {
-                            IconButton(
-                                enabled = isConnected,
-                                onClick = {
-                                    if (true) {
-                                        showToast(context, "Reset Not Yet Implemented", Toast.LENGTH_SHORT)
-                                    } else {
-                                        pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
-                                            realtimeClient.dataSendInputAudioBufferClear()
-                                        }
-                                    }
-                                },
-                                modifier = Modifier
-                                    .size(66.dp)
-                                    // Whoever designed this `restart_alt` icon did it wrong.
-                                    // They should have centered it in its border instead of having an asymmetric protrusion on the top.
-                                    .offset(y = (-2).dp)
-                            ) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.baseline_restart_alt_24),
-                                    contentDescription = "Reset",
-                                    modifier = Modifier
-                                        .size(50.dp)
-                                    //.border(1.dp, Color.Magenta)
-                                )
-                            }
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .border(
-                                    4.dp,
-                                    if (isConnected) MaterialTheme.colorScheme.primary else disabledColor,
-                                    shape = CircleShape
-                                )
+                            ,
                         ) {
                             IconButton(
                                 enabled = isConnected,
@@ -1002,6 +1017,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                                 )
                             }
                         }
+
                     }
                 }
             }
