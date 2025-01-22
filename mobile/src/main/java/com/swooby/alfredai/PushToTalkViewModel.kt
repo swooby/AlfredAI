@@ -35,6 +35,7 @@ import com.openai.models.RealtimeSessionModel
 import com.openai.models.RealtimeSessionVoice
 import com.swooby.alfred.common.openai.realtime.RealtimeClient
 import com.swooby.alfred.common.openai.realtime.RealtimeClient.RealtimeClientListener
+import com.swooby.alfredai.PushToTalkPreferences.Companion.getMaxResponseOutputTokens
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -69,6 +70,9 @@ class PushToTalkViewModel(private val application: Application)
     private var _temperature = MutableStateFlow(prefs.temperature)
     val temperature = _temperature.asStateFlow()
 
+    private var _maxResponseOutputTokens = MutableStateFlow(prefs.maxResponseOutputTokens)
+    val maxResponseOutputTokens = _maxResponseOutputTokens.asStateFlow()
+
     private val sessionConfig: RealtimeSessionCreateRequest
         get() {
             return RealtimeSessionCreateRequest(
@@ -83,7 +87,7 @@ class PushToTalkViewModel(private val application: Application)
                 tools = null,
                 toolChoice = null,
                 temperature = BigDecimal(temperature.value.toDouble()),
-                maxResponseOutputTokens = null,
+                maxResponseOutputTokens = getMaxResponseOutputTokens(maxResponseOutputTokens.value),
             )
         }
 
@@ -94,6 +98,7 @@ class PushToTalkViewModel(private val application: Application)
         instructions: String,
         voice: RealtimeSessionVoice,
         temperature: Float,
+        maxResponseOutputTokens: Int,
     ): Job? {
         prefs.autoConnect = autoConnect
         _autoConnect.value = autoConnect
@@ -137,6 +142,12 @@ class PushToTalkViewModel(private val application: Application)
             _temperature.value = temperature
         }
 
+        if (maxResponseOutputTokens != prefs.maxResponseOutputTokens) {
+            updateSession = true
+            prefs.maxResponseOutputTokens = maxResponseOutputTokens
+            _maxResponseOutputTokens.value = maxResponseOutputTokens
+        }
+
         var jobReconnect: Job? = null
 
         if (realtimeClient == null) {
@@ -177,7 +188,7 @@ class PushToTalkViewModel(private val application: Application)
     val isConnected: Boolean
         get() = realtimeClient?.isConnected ?: false
 
-    val isConnecting: Boolean
+    private val isConnecting: Boolean
         get() = realtimeClient?.isConnecting ?: false
 
     private fun tryInitializeRealtimeClient(): Boolean {

@@ -48,10 +48,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.openai.models.RealtimeSessionCreateRequest
 import com.openai.models.RealtimeSessionInputAudioTranscription
+import com.openai.models.RealtimeSessionMaxResponseOutputTokens
 import com.openai.models.RealtimeSessionModel
 import com.openai.models.RealtimeSessionTurnDetection
 import com.openai.models.RealtimeSessionVoice
 import com.swooby.alfredai.AppUtils.annotatedStringFromHtml
+import com.swooby.alfredai.PushToTalkPreferences.Companion.MAX_RESPONSE_OUTPUT_TOKENS
 import com.swooby.alfredai.PushToTalkViewModel.Companion.DEBUG
 import com.swooby.alfredai.ui.theme.AlfredAITheme
 import kotlinx.coroutines.Job
@@ -101,14 +103,17 @@ class PushToTalkPreferences(context: Context) {
 
         val temperatureDefault = 0.8f
 
-        val sessionConfigDefault = RealtimeSessionCreateRequest(
-            model = modelDefault,
-            instructions = instructionsDefault,
-            voice = voiceDefault,
-            inputAudioTranscription = inputAudioTranscriptionDefault,
-            turnDetection = turnDetectionDefault,
-            temperature = BigDecimal(temperatureDefault.toDouble()),
-        )
+        const val MAX_RESPONSE_OUTPUT_TOKENS = 4096
+
+        val maxResponseOutputTokensDefault = 1024
+
+        fun getMaxResponseOutputTokens(maxResponseOutputTokens: Int): RealtimeSessionMaxResponseOutputTokens {
+            return if (maxResponseOutputTokens > MAX_RESPONSE_OUTPUT_TOKENS) {
+                RealtimeSessionMaxResponseOutputTokens.Inf
+            } else {
+                RealtimeSessionMaxResponseOutputTokens.Numeric(maxResponseOutputTokens)
+            }
+        }
     }
 
     private val prefs: SharedPreferences =
@@ -219,6 +224,36 @@ class PushToTalkPreferences(context: Context) {
     var temperature: Float
         get() = getFloat("temperature", temperatureDefault)
         set(value) = putFloat("temperature", value)
+
+    var maxResponseOutputTokens: Int
+        get() {
+            return getInt("maxResponseOutputTokens", maxResponseOutputTokensDefault)
+        }
+        set(value) {
+            putInt("maxResponseOutputTokens", value)
+        }
+}
+
+@Preview(
+    uiMode = Configuration.UI_MODE_NIGHT_NO,
+    showBackground = true
+)
+@Composable
+fun PushToTalkButtonPreferencesPreviewLight() {
+    AlfredAITheme(dynamicColor = false) {
+        PushToTalkPreferenceScreen()
+    }
+}
+
+@Preview(
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
+    showBackground = true
+)
+@Composable
+fun PushToTalkButtonPreferencesPreviewDark() {
+    AlfredAITheme(dynamicColor = false) {
+        PushToTalkPreferenceScreen()
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -234,6 +269,7 @@ fun PushToTalkPreferenceScreen(
     val initialInstructions by (pushToTalkViewModel?.instructions ?: MutableStateFlow(PushToTalkPreferences.instructionsDefault).asStateFlow()).collectAsState()
     val initialVoice by (pushToTalkViewModel?.voice ?: MutableStateFlow(PushToTalkPreferences.voiceDefault).asStateFlow()).collectAsState()
     val initialTemperature by (pushToTalkViewModel?.temperature ?: MutableStateFlow(PushToTalkPreferences.temperatureDefault).asStateFlow()).collectAsState()
+    val initialMaxResponseOutputTokens by (pushToTalkViewModel?.maxResponseOutputTokens ?: MutableStateFlow(PushToTalkPreferences.maxResponseOutputTokensDefault).asStateFlow()).collectAsState()
 
     var editedAutoConnect by remember { mutableStateOf(initialAutoConnect) }
     var editedApiKey by remember { mutableStateOf(initialApiKey) }
@@ -241,6 +277,9 @@ fun PushToTalkPreferenceScreen(
     var editedInstructions by remember { mutableStateOf(initialInstructions) }
     var editedVoice by remember { mutableStateOf(initialVoice) }
     var editedTemperature by remember { mutableStateOf(initialTemperature) }
+    var editedMaxResponseOutputTokens by remember { mutableStateOf(initialMaxResponseOutputTokens) }
+
+    var lastMaxResponseOutputTokens by remember { mutableStateOf(editedMaxResponseOutputTokens) }
 
     val saveOperation: () -> Job? = {
         val job = pushToTalkViewModel?.updatePreferences(
@@ -250,6 +289,7 @@ fun PushToTalkPreferenceScreen(
             editedInstructions,
             editedVoice,
             editedTemperature,
+            editedMaxResponseOutputTokens,
         )
         onSaveSuccess?.invoke()
         job
@@ -303,7 +343,7 @@ fun PushToTalkPreferenceScreen(
                     checked = editedAutoConnect,
                     onCheckedChange = { editedAutoConnect = it }
                 )
-                Text(text = "Auto Connect", style = MaterialTheme.typography.labelLarge)
+                Text(text = "Auto Connect")
             }
         }
 
@@ -404,55 +444,69 @@ fun PushToTalkPreferenceScreen(
 
         item {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Temperature: ",
+                    text = "Temperature:",
+                    modifier = Modifier.weight(1f),
                     textAlign = TextAlign.Start,
-                    modifier = Modifier
-                        .weight(1f),
-                    style = MaterialTheme.typography.labelLarge
                 )
                 Text(
                     text = "%.2f".format(editedTemperature),
                     textAlign = TextAlign.End,
-                    modifier = Modifier
-                        .weight(1f),
                     fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.labelLarge
                 )
             }
             Slider(
-                modifier = Modifier
-                    .fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(),
                 value = editedTemperature,
                 onValueChange = { editedTemperature = it },
                 valueRange = 0.6f..1.2f,
             )
         }
-    }
-}
 
-@Preview(
-    uiMode = Configuration.UI_MODE_NIGHT_NO,
-    showBackground = true
-)
-@Composable
-fun PushToTalkButtonPreferencesPreviewLight() {
-    AlfredAITheme(dynamicColor = false) {
-        PushToTalkPreferenceScreen()
-    }
-}
-
-@Preview(
-    uiMode = Configuration.UI_MODE_NIGHT_YES,
-    showBackground = true
-)
-@Composable
-fun PushToTalkButtonPreferencesPreviewDark() {
-    AlfredAITheme(dynamicColor = false) {
-        PushToTalkPreferenceScreen()
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    modifier = Modifier.weight(1f),
+                    text = "Max Response Tokens:",
+                    textAlign = TextAlign.Start,
+                )
+                Text(
+                    text = if (editedMaxResponseOutputTokens > MAX_RESPONSE_OUTPUT_TOKENS) "inf" else editedMaxResponseOutputTokens.toString(),
+                    textAlign = TextAlign.End,
+                    fontWeight = FontWeight.Bold,
+                )
+                Checkbox(
+                    checked = editedMaxResponseOutputTokens > MAX_RESPONSE_OUTPUT_TOKENS,
+                    onCheckedChange = { checked ->
+                        if (checked) {
+                            lastMaxResponseOutputTokens = editedMaxResponseOutputTokens
+                            editedMaxResponseOutputTokens = (MAX_RESPONSE_OUTPUT_TOKENS + 1)
+                        } else {
+                            editedMaxResponseOutputTokens = lastMaxResponseOutputTokens
+                        }
+                    }
+                )
+                Text(
+                    text = "Infinite",
+                    textAlign = TextAlign.End,
+                )
+            }
+            Slider(
+                modifier = Modifier
+                    .fillMaxWidth(),
+                enabled = editedMaxResponseOutputTokens <= MAX_RESPONSE_OUTPUT_TOKENS,
+                value = editedMaxResponseOutputTokens.toFloat(),
+                onValueChange = { editedMaxResponseOutputTokens = it.toInt() },
+                valueRange = 1f ..(MAX_RESPONSE_OUTPUT_TOKENS).toFloat(),
+            )
+        }
     }
 }
