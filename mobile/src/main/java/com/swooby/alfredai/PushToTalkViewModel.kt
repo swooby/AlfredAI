@@ -32,10 +32,15 @@ import com.openai.models.RealtimeServerEventSessionCreated
 import com.openai.models.RealtimeServerEventSessionUpdated
 import com.openai.models.RealtimeSessionCreateRequest
 import com.openai.models.RealtimeSessionModel
+import com.openai.models.RealtimeSessionVoice
 import com.swooby.alfred.common.openai.realtime.RealtimeClient
 import com.swooby.alfred.common.openai.realtime.RealtimeClient.RealtimeClientListener
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import java.math.BigDecimal
 
 class PushToTalkViewModel(private val application: Application)
@@ -58,6 +63,9 @@ class PushToTalkViewModel(private val application: Application)
     private var _instructions = MutableStateFlow(prefs.instructions)
     val instructions = _instructions.asStateFlow()
 
+    private var _voice = MutableStateFlow(prefs.voice)
+    val voice = _voice.asStateFlow()
+
     private var _temperature = MutableStateFlow(prefs.temperature)
     val temperature = _temperature.asStateFlow()
 
@@ -67,7 +75,7 @@ class PushToTalkViewModel(private val application: Application)
                 modalities = null,
                 model = model.value,
                 instructions = instructions.value,
-                voice = PushToTalkPreferences.voiceDefault,
+                voice = voice.value,
                 inputAudioFormat = null,
                 outputAudioFormat = null,
                 inputAudioTranscription = null,
@@ -84,8 +92,9 @@ class PushToTalkViewModel(private val application: Application)
         apiKey: String,
         model: RealtimeSessionModel,
         instructions: String,
+        voice: RealtimeSessionVoice,
         temperature: Float,
-    ) {
+    ): Job? {
         prefs.autoConnect = autoConnect
         _autoConnect.value = autoConnect
 
@@ -110,11 +119,25 @@ class PushToTalkViewModel(private val application: Application)
             _instructions.value = instructions
         }
 
+        /**
+         * https://platform.openai.com/docs/api-reference/realtime-client-events/session
+         * "session.update
+         * ... The client may send this event at any time to update the session configuration,
+         * and any field may be updated at any time, except for "voice"."
+         */
+        if (voice != prefs.voice) {
+            reconnectSession = true
+            prefs.voice = voice
+            _voice.value = voice
+        }
+
         if (temperature != prefs.temperature) {
             updateSession = true
             prefs.temperature = temperature
             _temperature.value = temperature
         }
+
+        var jobReconnect: Job? = null
 
         if (realtimeClient == null) {
             tryInitializeRealtimeClient()
@@ -122,7 +145,9 @@ class PushToTalkViewModel(private val application: Application)
             if (isConnectingOrConnected) {
                 if (isConnecting || reconnectSession) {
                     _realtimeClient?.disconnect()
-                    _realtimeClient?.connect()
+                    jobReconnect = CoroutineScope(Dispatchers.IO).launch {
+                        _realtimeClient?.connect()
+                    }
                 } else {
                     if (isConnected && updateSession) {
                         realtimeClient?.dataSendSessionUpdate(sessionConfig)
@@ -130,6 +155,8 @@ class PushToTalkViewModel(private val application: Application)
                 }
             }
         }
+
+        return jobReconnect
     }
 
     val isConfigured: Boolean
@@ -172,7 +199,7 @@ class PushToTalkViewModel(private val application: Application)
     }
 
     //
-    //region RealtimeClientListener
+    //region persistent RealtimeClientListener
     //
 
     private val listeners = mutableListOf<RealtimeClientListener>()

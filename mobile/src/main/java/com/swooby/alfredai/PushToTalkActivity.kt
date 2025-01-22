@@ -131,29 +131,36 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
     @Suppress("LocalVariableName")
     val TAG = "PushToTalkScreen"
 
-    val context = LocalContext.current
-
     @Suppress(
         "SimplifyBooleanWithConstants",
         "KotlinConstantConditions",
         "KotlinConstantConditions",
     )
     val debugForceShowPreferences = BuildConfig.DEBUG && false
+    @Suppress(
+        "SimplifyBooleanWithConstants",
+        "KotlinConstantConditions",
+        "KotlinConstantConditions",
+    )
+    val debugForceAutoConnect = BuildConfig.DEBUG && false
+
     var showPreferences by remember {
-        mutableStateOf(!(pushToTalkViewModel?.isConfigured ?: false) && debugForceShowPreferences)
+        mutableStateOf(debugForceShowPreferences || !(pushToTalkViewModel?.isConfigured ?: false))
     }
-    var onSaveButtonClick: (() -> Unit)? by remember { mutableStateOf(null) }
+    var onSaveButtonClick: (() -> Job?)? by remember { mutableStateOf(null) }
 
     var isConnectingOrConnected by remember {
-        mutableStateOf(pushToTalkViewModel?.realtimeClient?.isConnectingOrConnected ?: false)
+        mutableStateOf(pushToTalkViewModel?.isConnectingOrConnected ?: false)
     }
     var isConnected by remember {
-        mutableStateOf(pushToTalkViewModel?.realtimeClient?.isConnected ?: false)
+        mutableStateOf(pushToTalkViewModel?.isConnected ?: false)
     }
 
     var isConnectSwitchOn by remember { mutableStateOf(false) }
     var isConnectSwitchManualOff by remember { mutableStateOf(false) }
     var jobConnect by remember { mutableStateOf<Job?>(null) }
+
+    val context = LocalContext.current
 
     fun connect() {
         Log.d(TAG, "connect()")
@@ -210,7 +217,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
     }
 
     fun connectIfAutoConnectAndNotManualOff() {
-        if (pushToTalkViewModel?.autoConnect?.value == true) {
+        if (debugForceAutoConnect || pushToTalkViewModel?.autoConnect?.value == true) {
             if (!isConnectSwitchManualOff) {
                 connect()
             }
@@ -540,7 +547,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                     actions = {
                         if (showPreferences) {
                             TextButton(onClick = {
-                                onSaveButtonClick?.invoke()
+                                jobConnect = onSaveButtonClick?.invoke()
                             }) {
                                 Text("Save")
                             }
@@ -561,7 +568,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                         interceptBack = false
                     }
                     PushToTalkPreferenceScreen(
-                        pushToTalkViewModel,
+                        pushToTalkViewModel = pushToTalkViewModel,
                         onSaveSuccess = {
                             showPreferences = !(pushToTalkViewModel?.isConfigured ?: false)
                         },

@@ -54,6 +54,7 @@ import com.openai.models.RealtimeSessionVoice
 import com.swooby.alfredai.AppUtils.annotatedStringFromHtml
 import com.swooby.alfredai.PushToTalkViewModel.Companion.DEBUG
 import com.swooby.alfredai.ui.theme.AlfredAITheme
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.math.BigDecimal
@@ -65,21 +66,6 @@ class PushToTalkPreferences(context: Context) {
         val apiKeyDefault = BuildConfig.DANGEROUS_OPENAI_API_KEY
 
         val modelDefault = RealtimeSessionModel.`gpt-4o-mini-realtime-preview-2024-12-17`
-
-        val voiceDefault = RealtimeSessionVoice.ash
-
-        // No turn_detection; We will be PTTing...
-        val turnDetectionDefault: RealtimeSessionTurnDetection? = null
-
-        // Costs noticeably more money, so turn it off if we are DEBUG, unless we really need it
-        @Suppress("SimplifyBooleanWithConstants")
-        val inputAudioTranscriptionDefault = if (DEBUG || false) {
-            null
-        } else {
-            RealtimeSessionInputAudioTranscription(
-                model = RealtimeSessionInputAudioTranscription.Model.`whisper-1`
-            )
-        }
 
         /**
          * This (and all other) default value can be seen
@@ -98,14 +84,29 @@ class PushToTalkPreferences(context: Context) {
             """.trimMargin()
         val instructionsDefault = "Respond always in English. $instructionsDefaultOpenAI"
 
+        val voiceDefault = RealtimeSessionVoice.ash
+
+        // Costs noticeably more money, so turn it off if we are DEBUG, unless we really need it
+        @Suppress("SimplifyBooleanWithConstants")
+        val inputAudioTranscriptionDefault = if (DEBUG || false) {
+            null
+        } else {
+            RealtimeSessionInputAudioTranscription(
+                model = RealtimeSessionInputAudioTranscription.Model.`whisper-1`
+            )
+        }
+
+        // No turn_detection; We will be PTTing...
+        val turnDetectionDefault: RealtimeSessionTurnDetection? = null
+
         val temperatureDefault = 0.8f
 
         val sessionConfigDefault = RealtimeSessionCreateRequest(
             model = modelDefault,
-            voice = voiceDefault,
-            turnDetection = turnDetectionDefault,
-            inputAudioTranscription = inputAudioTranscriptionDefault,
             instructions = instructionsDefault,
+            voice = voiceDefault,
+            inputAudioTranscription = inputAudioTranscriptionDefault,
+            turnDetection = turnDetectionDefault,
             temperature = BigDecimal(temperatureDefault.toDouble()),
         )
     }
@@ -205,6 +206,16 @@ class PushToTalkPreferences(context: Context) {
         get() = getString("instructions", instructionsDefault)
         set(value) = putString("instructions", value)
 
+    var voice: RealtimeSessionVoice
+        get() {
+            return getString("voice", voiceDefault.name).let {
+                RealtimeSessionVoice.valueOf(it)
+            }
+        }
+        set(value) {
+            putString("voice", value.name)
+        }
+
     var temperature: Float
         get() = getFloat("temperature", temperatureDefault)
         set(value) = putFloat("temperature", value)
@@ -215,29 +226,33 @@ class PushToTalkPreferences(context: Context) {
 fun PushToTalkPreferenceScreen(
     pushToTalkViewModel: PushToTalkViewModel? = null,
     onSaveSuccess: (() -> Unit)? = null,
-    setSaveButtonCallback: (((() -> Unit)?) -> Unit)? = null,
+    setSaveButtonCallback: (((() -> Job?)?) -> Unit)? = null,
 ) {
     val initialAutoConnect by (pushToTalkViewModel?.autoConnect ?: MutableStateFlow(PushToTalkPreferences.autoConnectDefault).asStateFlow()).collectAsState()
     val initialApiKey by (pushToTalkViewModel?.apiKey ?: MutableStateFlow(PushToTalkPreferences.apiKeyDefault).asStateFlow()).collectAsState()
     val initialModel by (pushToTalkViewModel?.model ?: MutableStateFlow(PushToTalkPreferences.modelDefault).asStateFlow()).collectAsState()
     val initialInstructions by (pushToTalkViewModel?.instructions ?: MutableStateFlow(PushToTalkPreferences.instructionsDefault).asStateFlow()).collectAsState()
+    val initialVoice by (pushToTalkViewModel?.voice ?: MutableStateFlow(PushToTalkPreferences.voiceDefault).asStateFlow()).collectAsState()
     val initialTemperature by (pushToTalkViewModel?.temperature ?: MutableStateFlow(PushToTalkPreferences.temperatureDefault).asStateFlow()).collectAsState()
 
     var editedAutoConnect by remember { mutableStateOf(initialAutoConnect) }
     var editedApiKey by remember { mutableStateOf(initialApiKey) }
     var editedModel by remember { mutableStateOf(initialModel) }
     var editedInstructions by remember { mutableStateOf(initialInstructions) }
+    var editedVoice by remember { mutableStateOf(initialVoice) }
     var editedTemperature by remember { mutableStateOf(initialTemperature) }
 
-    val saveOperation: () -> Unit = {
-        pushToTalkViewModel?.updatePreferences(
+    val saveOperation: () -> Job? = {
+        val job = pushToTalkViewModel?.updatePreferences(
             editedAutoConnect,
             editedApiKey,
             editedModel,
             editedInstructions,
+            editedVoice,
             editedTemperature,
         )
         onSaveSuccess?.invoke()
+        job
     }
 
     LaunchedEffect(Unit) {
@@ -311,35 +326,35 @@ fun PushToTalkPreferenceScreen(
             )
         }
         item {
-            var modelExpanded by remember { mutableStateOf(false) }
+            var expanded by remember { mutableStateOf(false) }
             ExposedDropdownMenuBox(
-                expanded = modelExpanded,
-                onExpandedChange = { modelExpanded = !modelExpanded }
+                expanded = expanded,
+                onExpandedChange = { expanded = !expanded }
             ) {
                 TextField(
                     readOnly = true,
                     value = editedModel.name,
                     onValueChange = { /* read-only; ignore */ },
                     label = { Text("Model") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .menuAnchor(type = MenuAnchorType.PrimaryNotEditable, enabled = true)
                 )
-                 ExposedDropdownMenu(
-                     expanded = modelExpanded,
-                     onDismissRequest = { modelExpanded = false }
-                 ) {
-                     RealtimeSessionModel.entries.forEach { model ->
-                         DropdownMenuItem(
-                             text = { Text(model.name) },
-                             onClick = {
-                                 editedModel = model
-                                 modelExpanded = false
-                             }
-                         )
-                     }
-                 }
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    RealtimeSessionModel.entries.forEach { model ->
+                        DropdownMenuItem(
+                            text = { Text(model.name) },
+                            onClick = {
+                                editedModel = model
+                                expanded = false
+                            }
+                        )
+                    }
+                }
             }
         }
 
@@ -352,6 +367,39 @@ fun PushToTalkPreferenceScreen(
                 singleLine = false,
                 maxLines = 10
             )
+        }
+
+        item {
+            var expanded by remember { mutableStateOf(false) }
+            ExposedDropdownMenuBox(
+                expanded = false,
+                onExpandedChange = { expanded = !expanded }
+            ) {
+                TextField(
+                    readOnly = true,
+                    value = editedVoice.name,
+                    onValueChange = { /* read-only; ignore */ },
+                    label = { Text("Voice") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(type = MenuAnchorType.PrimaryNotEditable, enabled = true)
+                )
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    RealtimeSessionVoice.entries.forEach { voice ->
+                        DropdownMenuItem(
+                            text = { Text(voice.name) },
+                            onClick = {
+                                editedVoice = voice
+                                expanded = false
+                            }
+                        )
+                    }
+                }
+            }
         }
 
         item {
