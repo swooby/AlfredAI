@@ -2,9 +2,9 @@
 
 <div align="center">
 
-https://github.com/user-attachments/assets/be031d52-6494-45e1-ba0a-468080c2ffd1
+[![AlfredAI Demo](https://img.youtube.com/vi/2dk9uPPfRKw/0.jpg)](https://youtube.com/shorts/2dk9uPPfRKw)
 
-(Next time, with audio!)
+(Click to play)
 
 </div>
 
@@ -12,6 +12,5 @@ https://github.com/user-attachments/assets/be031d52-6494-45e1-ba0a-468080c2ffd1
 (Not necessarily in any order)
 1. `Wear` version (will involve moving some stuff to `Common`)
 2. Get `Reset` and `Stop` working
-3. Get `Conversation/Transcription` working
-4. Add more `Preferences` options
-5. Add `text` input/output feature
+3. Add `text` input/output feature
+4. Get `Conversation/Transcription` enhancements

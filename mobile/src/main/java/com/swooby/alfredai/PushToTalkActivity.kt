@@ -149,26 +149,79 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
     @Suppress(
         "SimplifyBooleanWithConstants",
         "KotlinConstantConditions",
-        "KotlinConstantConditions",
     )
     val debugForceShowPreferences = BuildConfig.DEBUG && false
     @Suppress(
         "SimplifyBooleanWithConstants",
         "KotlinConstantConditions",
-        "KotlinConstantConditions",
     )
     val debugForceDontAutoConnect = BuildConfig.DEBUG && false
     @Suppress(
         "SimplifyBooleanWithConstants",
-        //"KotlinConstantConditions",
         "KotlinConstantConditions",
     )
     val debugLogConversation = BuildConfig.DEBUG && true
+    @Suppress(
+        "SimplifyBooleanWithConstants",
+        "KotlinConstantConditions",
+    )
+    val debugToastVerbose = BuildConfig.DEBUG && false
+
+    //
+    //region Conversation
+    //
+
+    data class ConversationItem(
+        val id: String?,
+        val speaker: ConversationSpeaker,
+        val initialText: String
+    ) {
+        var text by mutableStateOf(initialText)
+    }
+
+    val conversationItems = remember { mutableStateListOf<ConversationItem>() }
+    @Suppress(
+        "SimplifyBooleanWithConstants",
+        "KotlinConstantConditions",
+    )
+    if (BuildConfig.DEBUG && false) {
+        fun generateRandomSentence(): String {
+            val subjects = listOf("The cat", "The dog", "The bird", "The fish")
+            val verbs = listOf("jumps", "runs", "flies", "swims")
+            val objects = listOf("over the fence", "in the park", "through the air", "in the water")
+            return "${subjects.random()} ${verbs.random()} ${objects.random()}."
+        }
+
+        for (i in 0..20) {
+            conversationItems.add(ConversationItem(
+                id = "$i",
+                ConversationSpeaker.entries.random(),
+                initialText = generateRandomSentence()
+            ))
+        }
+    }
+    val conversationListState = rememberLazyListState()
+    LaunchedEffect(Unit) {
+        snapshotFlow { conversationItems.lastOrNull()?.text }
+            .collect {
+                if (conversationItems.isNotEmpty()) {
+                    conversationListState.animateScrollToItem(conversationItems.size - 1)
+                }
+            }
+    }
+
+    //
+    //endregion
+    //
 
     var showPreferences by remember {
         mutableStateOf(debugForceShowPreferences || !(pushToTalkViewModel?.isConfigured ?: true))
     }
     var onSaveButtonClick: (() -> Job?)? by remember { mutableStateOf(null) }
+
+    //
+    //region Connect/Disconnect
+    //
 
     var isConnectingOrConnected by remember {
         mutableStateOf(pushToTalkViewModel?.isConnectingOrConnected ?: false)
@@ -190,6 +243,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                 isConnectSwitchOn = true
                 if (!isConnectingOrConnected) {
                     isConnectingOrConnected = true
+                    conversationItems.clear()
                     jobConnect = CoroutineScope(Dispatchers.IO).launch {
                         @Suppress("SimplifyBooleanWithConstants", "KotlinConstantConditions")
                         val debugDelay = BuildConfig.DEBUG && false
@@ -208,6 +262,16 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
         } else {
             showToast(context, "Not configured", Toast.LENGTH_SHORT)
             showPreferences = true
+        }
+    }
+
+    fun connectIfAutoConnectAndNotManualOff() {
+        if (!debugForceDontAutoConnect && pushToTalkViewModel?.autoConnect?.value == true) {
+            if (!isConnectSwitchManualOff) {
+                connect()
+            }
+        } else {
+            showToast(context, "Auto-connect is disabled", Toast.LENGTH_SHORT)
         }
     }
 
@@ -237,15 +301,13 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
         }
     }
 
-    fun connectIfAutoConnectAndNotManualOff() {
-        if (!debugForceDontAutoConnect && pushToTalkViewModel?.autoConnect?.value == true) {
-            if (!isConnectSwitchManualOff) {
-                connect()
-            }
-        } else {
-            showToast(context, "Auto-connect is disabled", Toast.LENGTH_SHORT)
-        }
-    }
+    //
+    //endregion
+    //
+
+    //
+    //region Permissions
+    //
 
     var hasAllRequiredPermissions by remember { mutableStateOf(
         checkSelfPermission(context, RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
@@ -290,44 +352,9 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
         }
     }
 
-    data class ConversationItem(
-        val id: String?,
-        val speaker: ConversationSpeaker,
-        val initialText: String
-    ) {
-        var text by mutableStateOf(initialText)
-    }
-
-    val conversationItems = remember { mutableStateListOf<ConversationItem>() }
-    @Suppress(
-        "SimplifyBooleanWithConstants",
-        "KotlinConstantConditions",
-        )
-    if (BuildConfig.DEBUG && false) {
-        fun generateRandomSentence(): String {
-            val subjects = listOf("The cat", "The dog", "The bird", "The fish")
-            val verbs = listOf("jumps", "runs", "flies", "swims")
-            val objects = listOf("over the fence", "in the park", "through the air", "in the water")
-            return "${subjects.random()} ${verbs.random()} ${objects.random()}."
-        }
-
-        for (i in 0..20) {
-            conversationItems.add(ConversationItem(
-                id = "$i",
-                ConversationSpeaker.entries.random(),
-                initialText = generateRandomSentence()
-            ))
-        }
-    }
-    val conversationListState = rememberLazyListState()
-    LaunchedEffect(Unit) {
-        snapshotFlow { conversationItems.lastOrNull()?.text }
-            .collect {
-                if (conversationItems.isNotEmpty()) {
-                    conversationListState.animateScrollToItem(conversationItems.size - 1)
-                }
-            }
-    }
+    //
+    //endregion
+    //
 
     //
     //region RealtimeClientListener
@@ -337,6 +364,10 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
             override fun onConnecting() {
                 Log.d(TAG, "onConnecting()")
                 isConnectingOrConnected = true
+                if (debugToastVerbose) {
+                    showToast(context = context, text = "Connecting...", forceInvokeOnMain = true)
+                }
+                playAudioResourceOnce(context, R.raw.connecting)
             }
 
             override fun onError(error: Exception) {
@@ -353,7 +384,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
 2025-01-17 17:43:21.191 27419-27475 RealtimeClient      com.swooby.alfredai D  connect: ephemeralApiKey=null
 2025-01-17 17:43:21.191 27419-27475 PushToTalkActivity  com.swooby.alfredai D  onError(com.openai.infrastructure.ClientException: No Ephemeral API Key In Response)
                         */
-                        "Mysterious \"Unable to resolve host\" error; Try again."
+                        "Mysterious \"Unable to resolve host `api.openai.com`\" error; Try again."
                     }
                     is ClientException -> {
                         var message: String? = error.message ?: error.toString()
@@ -377,20 +408,26 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                     }
                     else -> "Error: ${error.message}"
                 }
-                CoroutineScope(Dispatchers.Main).launch {
-                    showToast(context, text, Toast.LENGTH_LONG)
-                }
+                showToast(context = context, text = text, duration = Toast.LENGTH_LONG, forceInvokeOnMain = true)
             }
 
             override fun onConnected() {
                 Log.d(TAG, "onConnected()")
                 isConnected = true
                 jobConnect = null
+                if (debugToastVerbose) {
+                    showToast(context = context, text = "Connected", forceInvokeOnMain = true)
+                }
+                playAudioResourceOnce(context, R.raw.connected)
             }
 
             override fun onDisconnected() {
                 Log.d(TAG, "onDisconnected()")
                 disconnect(isClient = true)
+                if (debugToastVerbose) {
+                    showToast(context = context, text = "Disconnected", forceInvokeOnMain = true)
+                }
+                playAudioResourceOnce(context, R.raw.disconnected)
             }
 
             override fun onBinaryMessageReceived(data: ByteArray): Boolean {
@@ -473,9 +510,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                 Log.d(TAG, "onServerEventError($realtimeServerEventError)")
                 val error = realtimeServerEventError.error
                 val text = error.message
-                CoroutineScope(Dispatchers.Main).launch {
-                    showToast(context, text, Toast.LENGTH_LONG)
-                }
+                showToast(context = context, text = text, duration = Toast.LENGTH_LONG, forceInvokeOnMain = true)
             }
 
             override fun onServerEventInputAudioBufferCleared(
@@ -649,12 +684,18 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                 realtimeServerEventSessionCreated: RealtimeServerEventSessionCreated
             ) {
                 Log.d(TAG, "onServerEventSessionCreated($realtimeServerEventSessionCreated)")
+                if (debugToastVerbose) {
+                    showToast(context = context, text = "Session Created", forceInvokeOnMain = true)
+                }
             }
 
             override fun onServerEventSessionUpdated(
                 realtimeServerEventSessionUpdated: RealtimeServerEventSessionUpdated
             ) {
                 Log.d(TAG, "onServerEventSessionUpdated($realtimeServerEventSessionUpdated)")
+                if (debugToastVerbose) {
+                    showToast(context = context, text = "Session Updated", forceInvokeOnMain = true)
+                }
             }
         }
 
@@ -666,6 +707,10 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
     }
     //
     //endregion
+    //
+
+    //
+    //region UI
     //
 
     val disabledColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.disabled)
@@ -761,7 +806,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                     }
 
                     //
-                    // Conversation
+                    //region Conversation
                     //
                     Row(
                         modifier = Modifier
@@ -834,14 +879,18 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                     }
 
                     //
-                    // Reset, PushToTalk, Stop
+                    //endregion
+                    //
+
+                    //
+                    //region Reset, PushToTalk, Stop
                     //
                     Row(
                         modifier = Modifier
                             .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp)
                     ) {
                         //
-                        // Reset
+                        //region Reset
                         //
                         Box(
                             modifier = Modifier
@@ -879,10 +928,14 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                             }
                         }
 
+                        //
+                        //endregion
+                        //
+
                         Spacer(modifier = Modifier.weight(1f))
 
                         //
-                        // PushToTalk
+                        //region PushToTalk
                         //
                         Box(
                             modifier = Modifier
@@ -981,10 +1034,14 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                             )
                         }
 
+                        //
+                        //endregion
+                        //
+
                         Spacer(modifier = Modifier.weight(1f))
 
                         //
-                        // Stop
+                        //region Stop
                         //
                         Box(
                             modifier = Modifier
@@ -1018,11 +1075,18 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                             }
                         }
 
+                        //
+                        //endregion
+                        //
                     }
                 }
             }
         }
     }
+
+    //
+    //endregion
+    //
 }
 
 @Preview(

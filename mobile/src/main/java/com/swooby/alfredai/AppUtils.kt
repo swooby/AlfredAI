@@ -18,6 +18,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
@@ -27,9 +30,16 @@ object AppUtils {
     private val TAG = AppUtils::class.java.simpleName
 
     fun showToast(context: Context,
-                  message: String,
-                  duration: Int = Toast.LENGTH_SHORT) {
-        Toast.makeText(context, message, duration).show()
+                  text: String,
+                  duration: Int = Toast.LENGTH_SHORT,
+                  forceInvokeOnMain: Boolean = false) {
+        if (forceInvokeOnMain) {
+            CoroutineScope(Dispatchers.Main).launch {
+                showToast(context, text, duration, false)
+            }
+        } else {
+            Toast.makeText(context, text, duration).show()
+        }
     }
 
     fun playAudioResourceOnce(
