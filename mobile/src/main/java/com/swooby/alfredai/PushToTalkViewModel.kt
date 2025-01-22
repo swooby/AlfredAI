@@ -31,6 +31,7 @@ import com.openai.models.RealtimeServerEventResponseTextDone
 import com.openai.models.RealtimeServerEventSessionCreated
 import com.openai.models.RealtimeServerEventSessionUpdated
 import com.openai.models.RealtimeSessionCreateRequest
+import com.openai.models.RealtimeSessionModel
 import com.swooby.alfred.common.openai.realtime.RealtimeClient
 import com.swooby.alfred.common.openai.realtime.RealtimeClient.RealtimeClientListener
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,6 +52,9 @@ class PushToTalkViewModel(private val application: Application)
     private var _apiKey = MutableStateFlow(prefs.apiKey)
     val apiKey = _apiKey.asStateFlow()
 
+    private var _model = MutableStateFlow(prefs.model)
+    val model = _model.asStateFlow()
+
     private var _instructions = MutableStateFlow(prefs.instructions)
     val instructions = _instructions.asStateFlow()
 
@@ -61,7 +65,7 @@ class PushToTalkViewModel(private val application: Application)
         get() {
             return RealtimeSessionCreateRequest(
                 modalities = null,
-                model = PushToTalkPreferences.modelDefault,
+                model = model.value,
                 instructions = instructions.value,
                 voice = PushToTalkPreferences.voiceDefault,
                 inputAudioFormat = null,
@@ -78,6 +82,7 @@ class PushToTalkViewModel(private val application: Application)
     fun updatePreferences(
         autoConnect: Boolean,
         apiKey: String,
+        model: RealtimeSessionModel,
         instructions: String,
         temperature: Float,
     ) {
@@ -93,6 +98,12 @@ class PushToTalkViewModel(private val application: Application)
             _apiKey.value = apiKey
         }
 
+        if (model != prefs.model) {
+            updateSession = true
+            prefs.model = model
+            _model.value = model
+        }
+
         if (instructions != prefs.instructions) {
             updateSession = true
             prefs.instructions = instructions
@@ -105,7 +116,20 @@ class PushToTalkViewModel(private val application: Application)
             _temperature.value = temperature
         }
 
-        tryInitializeRealtimeClient()
+        if (realtimeClient == null) {
+            tryInitializeRealtimeClient()
+        } else {
+            if (isConnectingOrConnected) {
+                if (isConnecting || reconnectSession) {
+                    _realtimeClient?.disconnect()
+                    _realtimeClient?.connect()
+                } else {
+                    if (isConnected && updateSession) {
+                        realtimeClient?.dataSendSessionUpdate(sessionConfig)
+                    }
+                }
+            }
+        }
     }
 
     val isConfigured: Boolean
@@ -119,6 +143,15 @@ class PushToTalkViewModel(private val application: Application)
             }
             return _realtimeClient
         }
+
+    val isConnectingOrConnected: Boolean
+        get() = realtimeClient?.isConnectingOrConnected ?: false
+
+    val isConnected: Boolean
+        get() = realtimeClient?.isConnected ?: false
+
+    val isConnecting: Boolean
+        get() = realtimeClient?.isConnecting ?: false
 
     private fun tryInitializeRealtimeClient(): Boolean {
         if (!isConfigured) {

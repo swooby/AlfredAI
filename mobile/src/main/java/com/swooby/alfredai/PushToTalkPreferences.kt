@@ -17,10 +17,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -42,7 +46,6 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.openai.infrastructure.Serializer
 import com.openai.models.RealtimeSessionCreateRequest
 import com.openai.models.RealtimeSessionInputAudioTranscription
 import com.openai.models.RealtimeSessionModel
@@ -110,6 +113,10 @@ class PushToTalkPreferences(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("pushToTalkPreferences", Context.MODE_PRIVATE)
 
+    //
+    //region generic get/set primitives
+    //
+
     @Suppress("SameParameterValue")
     private fun getBoolean(key: String, default: Boolean): Boolean {
         return prefs.getBoolean(key, default)
@@ -161,6 +168,10 @@ class PushToTalkPreferences(context: Context) {
         }
     }
 
+    //
+    //endregion
+    //
+
     var autoConnect: Boolean
         get() = getBoolean("autoConnect", autoConnectDefault)
         set(value) = putBoolean("autoConnect", value)
@@ -180,6 +191,16 @@ class PushToTalkPreferences(context: Context) {
             putString("apiKey", apiKeyEncrypted)
         }
 
+    var model: RealtimeSessionModel
+        get() {
+            return getString("model", modelDefault.name).let {
+                RealtimeSessionModel.valueOf(it)
+            }
+        }
+        set(value) {
+            putString("model", value.name)
+        }
+
     var instructions: String
         get() = getString("instructions", instructionsDefault)
         set(value) = putString("instructions", value)
@@ -192,24 +213,27 @@ class PushToTalkPreferences(context: Context) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PushToTalkPreferenceScreen(
-    pushToTalkViewModel2: PushToTalkViewModel? = null,
+    pushToTalkViewModel: PushToTalkViewModel? = null,
     onSaveSuccess: (() -> Unit)? = null,
     setSaveButtonCallback: (((() -> Unit)?) -> Unit)? = null,
 ) {
-    val _autoConnect by (pushToTalkViewModel2?.autoConnect ?: MutableStateFlow(PushToTalkPreferences.autoConnectDefault).asStateFlow()).collectAsState()
-    val _apiKey by (pushToTalkViewModel2?.apiKey ?: MutableStateFlow(PushToTalkPreferences.apiKeyDefault).asStateFlow()).collectAsState()
-    val _instructions by (pushToTalkViewModel2?.instructions ?: MutableStateFlow(PushToTalkPreferences.instructionsDefault).asStateFlow()).collectAsState()
-    val _temperature by (pushToTalkViewModel2?.temperature ?: MutableStateFlow(PushToTalkPreferences.temperatureDefault).asStateFlow()).collectAsState()
+    val initialAutoConnect by (pushToTalkViewModel?.autoConnect ?: MutableStateFlow(PushToTalkPreferences.autoConnectDefault).asStateFlow()).collectAsState()
+    val initialApiKey by (pushToTalkViewModel?.apiKey ?: MutableStateFlow(PushToTalkPreferences.apiKeyDefault).asStateFlow()).collectAsState()
+    val initialModel by (pushToTalkViewModel?.model ?: MutableStateFlow(PushToTalkPreferences.modelDefault).asStateFlow()).collectAsState()
+    val initialInstructions by (pushToTalkViewModel?.instructions ?: MutableStateFlow(PushToTalkPreferences.instructionsDefault).asStateFlow()).collectAsState()
+    val initialTemperature by (pushToTalkViewModel?.temperature ?: MutableStateFlow(PushToTalkPreferences.temperatureDefault).asStateFlow()).collectAsState()
 
-    var editedAutoConnect by remember { mutableStateOf(_autoConnect) }
-    var editedApiKey by remember { mutableStateOf(_apiKey) }
-    var editedInstructions by remember { mutableStateOf(_instructions) }
-    var editedTemperature by remember { mutableStateOf(_temperature) }
+    var editedAutoConnect by remember { mutableStateOf(initialAutoConnect) }
+    var editedApiKey by remember { mutableStateOf(initialApiKey) }
+    var editedModel by remember { mutableStateOf(initialModel) }
+    var editedInstructions by remember { mutableStateOf(initialInstructions) }
+    var editedTemperature by remember { mutableStateOf(initialTemperature) }
 
     val saveOperation: () -> Unit = {
-        pushToTalkViewModel2?.updatePreferences(
+        pushToTalkViewModel?.updatePreferences(
             editedAutoConnect,
             editedApiKey,
+            editedModel,
             editedInstructions,
             editedTemperature,
         )
@@ -285,6 +309,38 @@ fun PushToTalkPreferenceScreen(
                 onValueChange = { editedApiKey = it },
                 modifier = Modifier.fillMaxWidth(),
             )
+        }
+        item {
+            var modelExpanded by remember { mutableStateOf(false) }
+            ExposedDropdownMenuBox(
+                expanded = modelExpanded,
+                onExpandedChange = { modelExpanded = !modelExpanded }
+            ) {
+                TextField(
+                    readOnly = true,
+                    value = editedModel.name,
+                    onValueChange = { /* read-only; ignore */ },
+                    label = { Text("Model") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(type = MenuAnchorType.PrimaryNotEditable, enabled = true)
+                )
+                 ExposedDropdownMenu(
+                     expanded = modelExpanded,
+                     onDismissRequest = { modelExpanded = false }
+                 ) {
+                     RealtimeSessionModel.entries.forEach { model ->
+                         DropdownMenuItem(
+                             text = { Text(model.name) },
+                             onClick = {
+                                 editedModel = model
+                                 modelExpanded = false
+                             }
+                         )
+                     }
+                 }
+            }
         }
 
         item {
