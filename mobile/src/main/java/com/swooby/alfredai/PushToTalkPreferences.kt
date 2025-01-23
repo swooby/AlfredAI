@@ -214,7 +214,7 @@ class PushToTalkPreferences(context: Context) {
     var inputAudioTranscription: RealtimeSessionInputAudioTranscription?
         get() {
             return getString("inputAudioTranscription", "").let {
-                if (it.isBlank()) null else RealtimeSessionInputAudioTranscription(model = RealtimeSessionInputAudioTranscription.Model.valueOf(it))
+                if (it == "") null else RealtimeSessionInputAudioTranscription(model = RealtimeSessionInputAudioTranscription.Model.valueOf(it))
             }
         }
         set(value) {

@@ -53,6 +53,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -847,17 +848,24 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                                         val paddingAmount = 60.dp
                                         val modifier: Modifier
                                         val textAlign: TextAlign
-                                        when (item.speaker) {
-                                            ConversationSpeaker.Local -> {
-                                                modifier = Modifier
-                                                    .padding(start = paddingAmount)
-                                                textAlign = TextAlign.End
+                                        val inputAudioTranscription = pushToTalkViewModel?.inputAudioTranscription?.collectAsState()?.value
+                                        if (inputAudioTranscription != null) {
+                                            when (item.speaker) {
+                                                ConversationSpeaker.Local -> {
+                                                    modifier = Modifier
+                                                        .padding(start = paddingAmount)
+                                                    textAlign = TextAlign.End
+                                                }
+
+                                                ConversationSpeaker.Remote -> {
+                                                    modifier = Modifier
+                                                        .padding(end = paddingAmount)
+                                                    textAlign = TextAlign.Start
+                                                }
                                             }
-                                            ConversationSpeaker.Remote -> {
-                                                modifier = Modifier
-                                                    .padding(end = paddingAmount)
-                                                textAlign = TextAlign.Start
-                                            }
+                                        } else {
+                                            modifier = Modifier
+                                            textAlign = TextAlign.Start
                                         }
                                         Row(
                                             modifier = Modifier
