@@ -18,6 +18,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +37,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 //noinspection UsingMaterialAndMaterial3Libraries
 import androidx.compose.material.ContentAlpha
 import androidx.compose.material.icons.Icons
@@ -142,7 +144,7 @@ enum class ConversationSpeaker {
     Remote,
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
     @Suppress("LocalVariableName")
@@ -824,20 +826,31 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                             .weight(1f)
                             .border(1.dp, Color.LightGray, shape = RoundedCornerShape(8.dp))
                             .fillMaxWidth()
-                            .padding(8.dp)
-                        ,
-                        horizontalArrangement = Arrangement.spacedBy(24.dp)
+                            .padding(start = 8.dp, end = 8.dp, top = 0.dp, bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(24.dp),
                     ) {
                         Column {
-                            Row {
-                                Text(text = "Conversation:")
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    modifier = Modifier.padding(start = 4.dp),
+                                    text = "Conversation:",
+                                )
+                                IconButton(onClick = { conversationItems.clear() }) {
+                                    Icon(
+                                        painterResource(id = R.drawable.baseline_clear_all_24),
+                                        contentDescription = "Clear All",
+                                    )
+                                }
                             }
                             Row {
                                 LazyColumn(
                                     modifier = Modifier
                                         .border(1.dp, Color.LightGray, shape = RoundedCornerShape(8.dp))
-                                        .fillMaxSize()
-                                    ,
+                                        .fillMaxSize(),
                                     contentPadding = PaddingValues(8.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp),
                                     state = conversationListState,
@@ -880,14 +893,14 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                                                     .padding(8.dp)
                                                 ,
                                             ) {
-                                                Text(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                    ,
-                                                    text = item.text,
-                                                    textAlign = textAlign,
-
-                                                )
+                                                SelectionContainer {
+                                                    Text(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth(),
+                                                        text = item.text,
+                                                        textAlign = textAlign,
+                                                        )
+                                                }
                                             }
                                         }
                                     }
