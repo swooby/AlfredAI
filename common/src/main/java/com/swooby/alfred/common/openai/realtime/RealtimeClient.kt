@@ -52,6 +52,7 @@ import com.swooby.alfred.common.Utils.quote
 import com.swooby.alfredai.common.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -98,6 +99,10 @@ class RealtimeClient(private val applicationContext: Context,
     private var peerConnection: PeerConnection? = null
     private var localAudioTrackMicrophone: AudioTrack? = null
     private var localAudioTrackMicrophoneSender: RtpSender? = null
+    private val remoteAudioTracks = mutableListOf<AudioTrack>()
+    var isCancelingResponse: Boolean = false
+        get() = field
+        private set(value) { field = value }
     private var dataChannel: DataChannel? = null
     private var dataChannelOpened = false
 
@@ -275,10 +280,18 @@ class RealtimeClient(private val applicationContext: Context,
                     logPc.d("onRenegotiationNeeded()")
                 }
                 override fun onAddTrack(receiver: RtpReceiver, mediaStreams: Array<MediaStream>) {
-                    logPc.d("onAddTrack(${receiver.track()?.kind()}, mediaStreams(${mediaStreams.size})=[...])")
+                    val track = receiver.track()
+                    logPc.d("onAddTrack(receiver={..., track=${track}, ...}, mediaStreams(${mediaStreams.size})=[...])")
+                    val trackKind = track?.kind()
                     // Remote audio track arrives here
                     // If you need to play it directly, you can attach it to an AudioTrack sink
                     //...
+                    if (trackKind == "audio") {
+                        remoteAudioTracks.add(track as AudioTrack)
+
+                        // If you want to play it automatically, attach to an AudioSink here
+                        // e.g. track.addSink(myAudioSink)
+                    }
                 }
             }
         ) ?: throw IllegalStateException("Failed to create PeerConnection")
@@ -294,7 +307,7 @@ class RealtimeClient(private val applicationContext: Context,
         setLocalAudioMicrophone(peerConnectionFactory)
         setLocalAudioSpeaker(applicationContext)
         //
-        //endregion Audio
+        //endregion
         //
 
         val dataChannelInit = DataChannel.Init()
@@ -418,8 +431,14 @@ class RealtimeClient(private val applicationContext: Context,
     fun disconnect() {
         log.d("+disconnect()")
         ApiClient.accessToken = null
+
+        isCancelingResponse = false
+        setLocalAudioTrackSpeakerEnabled(true)
+        remoteAudioTracks.clear()
+
         isConnectingOrConnected = false
         isConnected = false
+
         val peerConnection = this.peerConnection
         this.peerConnection = null
         peerConnection?.also {
@@ -435,50 +454,6 @@ class RealtimeClient(private val applicationContext: Context,
         dataChannelOpened = false
         log.d("-disconnect()")
     }
-
-    private inline fun <reified T> dataSend(content: T, mediaType: String? = ApiClient.JsonMediaType): Boolean {
-        when {
-            mediaType == null || (mediaType.startsWith("application/") && mediaType.endsWith("json")) ->
-                return dataSend(Serializer.serialize<T>(content))
-            else ->
-                throw UnsupportedOperationException("send currently only supports JSON body.")
-        }
-    }
-
-    private fun dataSend(text: String): Boolean {
-        if (debug) {
-            log.d("dataSend: text=\"${text}\"")
-        }
-        return dataSend(text.toByteArray(), binary = false)
-    }
-
-    private fun dataSend(bytes: ByteArray,
-                         @Suppress("SameParameterValue")
-                         binary: Boolean = true): Boolean {
-        if (!isConnected) {
-            throw IllegalStateException("not connected")
-        }
-        return dataChannel?.send(DataChannel.Buffer(ByteBuffer.wrap(bytes), binary)) ?: false
-    }
-
-    fun dataSendSessionUpdate(sessionConfig: RealtimeSessionCreateRequest): Boolean {
-        log.d("dataSendSessionUpdate($sessionConfig)")
-        this.sessionConfig = sessionConfig
-        return dataSend(RealtimeClientEventSessionUpdate(
-            session = sessionConfig,
-            eventId = RealtimeUtils.generateId()
-        ))
-    }
-
-//    fun startRtcEventLog() {
-//        peerConnection?.startRtcEventLog(...)
-//    }
-//
-//    fun stopRtcEventLog() {
-//        peerConnection?.stopRtcEventLog()
-//    }
-
-    //receive(eventName, event)
 
     //
     //region Audio Stuff...
@@ -516,7 +491,10 @@ class RealtimeClient(private val applicationContext: Context,
      * Essentially unmute or mute the speaker
      */
     fun setLocalAudioTrackSpeakerEnabled(enabled: Boolean) {
-        TODO("Not yet implemented")
+        log.d("setLocalAudioTrackSpeakerEnabled($enabled)")
+        remoteAudioTracks.forEach {
+            it.setEnabled(enabled)
+        }
     }
 
     /**
@@ -525,6 +503,44 @@ class RealtimeClient(private val applicationContext: Context,
     fun setLocalAudioTrackMicrophoneEnabled(enabled: Boolean) {
         log.d("setLocalAudioTrackMicrophoneEnabled($enabled)")
         localAudioTrackMicrophone?.setEnabled(enabled)
+    }
+
+    //
+    //endregion
+    //
+
+    private inline fun <reified T> dataSend(content: T, mediaType: String? = ApiClient.JsonMediaType): Boolean {
+        when {
+            mediaType == null || (mediaType.startsWith("application/") && mediaType.endsWith("json")) ->
+                return dataSend(Serializer.serialize<T>(content))
+            else ->
+                throw UnsupportedOperationException("send currently only supports JSON body.")
+        }
+    }
+
+    private fun dataSend(text: String): Boolean {
+        if (debug) {
+            log.d("dataSend: text=\"${text}\"")
+        }
+        return dataSend(text.toByteArray(), binary = false)
+    }
+
+    private fun dataSend(bytes: ByteArray,
+                         @Suppress("SameParameterValue")
+                         binary: Boolean = true): Boolean {
+        if (!isConnected) {
+            throw IllegalStateException("not connected")
+        }
+        return dataChannel?.send(DataChannel.Buffer(ByteBuffer.wrap(bytes), binary)) ?: false
+    }
+
+    fun dataSendSessionUpdate(sessionConfig: RealtimeSessionCreateRequest): Boolean {
+        log.d("dataSendSessionUpdate($sessionConfig)")
+        this.sessionConfig = sessionConfig
+        return dataSend(RealtimeClientEventSessionUpdate(
+            session = sessionConfig,
+            eventId = RealtimeUtils.generateId()
+        ))
     }
 
     // https://platform.openai.com/docs/guides/realtime-model-capabilities#voice-activity-detection-vad
@@ -558,19 +574,20 @@ class RealtimeClient(private val applicationContext: Context,
 
     fun dataSendResponseCancel(responseId: String? = null): Boolean {
         log.d("dataSendResponseCancel(responseId=${quote(responseId)})")
-        return dataSend(RealtimeClientEventResponseCancel(
+        val sending = dataSend(RealtimeClientEventResponseCancel(
             eventId = RealtimeUtils.generateId(),
             responseId = responseId,
         ))
+        if (sending) {
+            setLocalAudioTrackSpeakerEnabled(false)
+            isCancelingResponse = true
+        }
+        return sending
     }
 
     // TODO:(pv implement audio inputs and outputs
     // https://platform.openai.com/docs/guides/realtime-model-capabilities#audio-inputs-and-outputs
     // https://platform.openai.com/docs/guides/realtime-model-capabilities#handling-audio-with-websockets
-    //
-
-    //
-    //endregion
     //
 
     // TODO:(pv) implement text inputs and outputs
@@ -624,6 +641,7 @@ class RealtimeClient(private val applicationContext: Context,
         fun onServerEventInputAudioBufferCommitted(realtimeServerEventInputAudioBufferCommitted: RealtimeServerEventInputAudioBufferCommitted)
         fun onServerEventInputAudioBufferSpeechStarted(realtimeServerEventInputAudioBufferSpeechStarted: RealtimeServerEventInputAudioBufferSpeechStarted)
         fun onServerEventInputAudioBufferSpeechStopped(realtimeServerEventInputAudioBufferSpeechStopped: RealtimeServerEventInputAudioBufferSpeechStopped)
+        fun onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped: ServerEventOutputAudioBufferAudioStopped)
         fun onServerEventRateLimitsUpdated(realtimeServerEventRateLimitsUpdated: RealtimeServerEventRateLimitsUpdated)
         fun onServerEventResponseAudioDelta(realtimeServerEventResponseAudioDelta: RealtimeServerEventResponseAudioDelta)
         fun onServerEventResponseAudioDone(realtimeServerEventResponseAudioDone: RealtimeServerEventResponseAudioDone)
@@ -841,7 +859,13 @@ class RealtimeClient(private val applicationContext: Context,
                     notifyServerEventSessionUpdated(it)
                 }
             }
-            else -> log.w("onDataChannelText: unknown type=$type")
+            "output_audio_buffer.audio_stopped" -> {
+                log.w("onDataChannelText: undocumented `output_audio_buffer.audio_stopped`")
+                Serializer.deserialize<ServerEventOutputAudioBufferAudioStopped>(message)?.also {
+                    notifyServerEventOutputAudioBufferAudioStopped(it)
+                }
+            }
+            else -> log.w("onDataChannelText: unknown type=${quote(type)}")
         }
     }
 
@@ -920,6 +944,42 @@ class RealtimeClient(private val applicationContext: Context,
     ) {
         listeners.forEach {
             it.onServerEventInputAudioBufferSpeechStopped(realtimeServerEventInputAudioBufferSpeechStopped)
+        }
+    }
+
+    /**
+     * Example:
+     * `{"type":"output_audio_buffer.audio_stopped","event_id":"event_e69be18ad4f34b01","response_id":"resp_Asg4GBgYXDJXSLfXu6cWO"}`
+     */
+    data class ServerEventOutputAudioBufferAudioStopped(
+        /**
+         * The event type, must be "output_audio_buffer.audio_stopped".
+         */
+        val type: String,
+        /**
+         * The unique ID of the server event.
+         */
+        val event_id: String,
+        /**
+         * The ID of the response.
+         */
+        val response_id: String,
+    )
+
+    private fun notifyServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped: ServerEventOutputAudioBufferAudioStopped) {
+        if (isCancelingResponse) {
+            isCancelingResponse = false
+            CoroutineScope(Dispatchers.IO).launch {
+                delay(200)
+                setLocalAudioTrackSpeakerEnabled(true)
+                listeners.forEach {
+                    it.onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped)
+                }
+            }
+        } else {
+            listeners.forEach {
+                it.onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped)
+            }
         }
     }
 

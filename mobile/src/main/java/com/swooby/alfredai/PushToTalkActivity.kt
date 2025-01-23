@@ -103,6 +103,7 @@ import com.openai.models.RealtimeServerEventSessionUpdated
 import com.swooby.alfred.common.Utils.quote
 import com.swooby.alfredai.AppUtils.showToast
 import com.swooby.alfred.common.openai.realtime.RealtimeClient
+import com.swooby.alfred.common.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
 import com.swooby.alfredai.AppUtils.playAudioResourceOnce
 import com.swooby.alfredai.ui.theme.AlfredAITheme
 import kotlinx.coroutines.CoroutineScope
@@ -229,6 +230,8 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
     var isConnected by remember {
         mutableStateOf(pushToTalkViewModel?.isConnected ?: false)
     }
+
+    var isCancelingResponse by remember { mutableStateOf(pushToTalkViewModel?.realtimeClient?.isCancelingResponse ?: false) }
 
     var isConnectSwitchOn by remember { mutableStateOf(false) }
     var isConnectSwitchManualOff by remember { mutableStateOf(false) }
@@ -535,6 +538,12 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                 realtimeServerEventInputAudioBufferSpeechStopped: RealtimeServerEventInputAudioBufferSpeechStopped
             ) {
                 Log.d(TAG, "onServerEventInputAudioBufferSpeechStopped($realtimeServerEventInputAudioBufferSpeechStopped)")
+            }
+
+            override fun onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped: ServerEventOutputAudioBufferAudioStopped) {
+                Log.d(TAG, "onServerEventOutputAudioBufferAudioStopped($realtimeServerEventOutputAudioBufferAudioStopped)")
+                isCancelingResponse = false
+                showToast(context = context, text = "Response canceled", duration = Toast.LENGTH_SHORT, forceInvokeOnMain = true)
             }
 
             override fun onServerEventRateLimitsUpdated(
@@ -902,7 +911,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                             ,
                         ) {
                             IconButton(
-                                enabled = isConnected,
+                                enabled = isConnected && !isCancelingResponse,
                                 onClick = {
                                     if (true) {
                                         showToast(context, "Reset Not Yet Implemented", Toast.LENGTH_SHORT)
@@ -971,7 +980,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                                 }
                             }
                             PushToTalkButton(
-                                enabled = isConnected,
+                                enabled = isConnected && !isCancelingResponse,
                                 onPushToTalkStart = { pttState ->
                                     pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
                                         Log.d(TAG, "")
@@ -1053,13 +1062,32 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                             ,
                         ) {
                             IconButton(
-                                enabled = isConnected,
+                                enabled = isConnected && !isCancelingResponse,
                                 onClick = {
-                                    if (true) {
-                                        showToast(context, "Stop Not Yet Implemented", Toast.LENGTH_SHORT)
-                                    } else {
-                                        pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
-                                            realtimeClient.dataSendResponseCancel()
+                                    pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
+                                        // If true, will be set back to false in onServerEventOutputAudioBufferAudioStopped
+                                        isCancelingResponse = realtimeClient.dataSendResponseCancel()
+                                        /*
+                                        It takes a REALLY long time for `output_audio_buffer.audio_stopped` to be received.
+                                        I have seen it take up to 20 seconds (proportional to the amount of speech in response)
+2025-01-22 16:38:45.287 17703-17703 RealtimeClient          com.swooby.alfredai                  D  dataSend: text="{"type":"response.cancel","event_id":"evt_SbrzipkcoeecHwabk"}"
+...
+2025-01-22 16:38:45.590 17703-17785 RealtimeClient          com.swooby.alfredai                  D  onDataChannelText: type="response.audio.done"
+2025-01-22 16:38:45.601 17703-17785 PushToTalkScreen        com.swooby.alfredai                  D  onServerEventResponseAudioDone(RealtimeServerEventResponseAudioDone(eventId=event_AsfX3PzYdfufTHPO6EgGQ, type=responsePeriodAudioPeriodDone, responseId=resp_AsfX2yF5teyOCOyVSTCow, itemId=item_AsfX2leMQadkxBACGBdgr, outputIndex=0, contentIndex=0))
+2025-01-22 16:38:45.601 17703-17785 RealtimeClient          com.swooby.alfredai                  D  onDataChannelText: type="response.audio_transcript.done"
+2025-01-22 16:38:45.606 17703-17785 PushToTalkScreen        com.swooby.alfredai                  D  onServerEventResponseAudioTranscriptDone(RealtimeServerEventResponseAudioTranscriptDone(eventId=event_AsfX3A3s59KvfvVMZI0ws, type=responsePeriodAudio_transcriptPeriodDone, responseId=resp_AsfX2yF5teyOCOyVSTCow, itemId=item_AsfX2leMQadkxBACGBdgr, outputIndex=0, contentIndex=0, transcript=Once upon a time in a bustling little town lived a man named Fred. Fred was known for his curiosity and his adventurous spirit. Every morning, he would set out with))
+2025-01-22 16:38:45.606 17703-17785 RealtimeClient          com.swooby.alfredai                  D  onDataChannelText: type="response.content_part.done"
+2025-01-22 16:38:45.619 17703-17785 PushToTalkScreen        com.swooby.alfredai                  D  onServerEventResponseContentPartDone(RealtimeServerEventResponseContentPartDone(eventId=event_AsfX3kZXNbclgSThE1QMJ, type=responsePeriodContent_partPeriodDone, responseId=resp_AsfX2yF5teyOCOyVSTCow, itemId=item_AsfX2leMQadkxBACGBdgr, outputIndex=0, contentIndex=0, part=RealtimeServerEventResponseContentPartDonePart(type=audio, text=null, audio=null, transcript=Once upon a time in a bustling little town lived a man named Fred. Fred was known for his curiosity and his adventurous spirit. Every morning, he would set out with)))
+2025-01-22 16:38:45.620 17703-17785 RealtimeClient          com.swooby.alfredai                  D  onDataChannelText: type="response.output_item.done"
+2025-01-22 16:38:45.624 17703-17785 PushToTalkScreen        com.swooby.alfredai                  D  onServerEventResponseOutputItemDone(RealtimeServerEventResponseOutputItemDone(eventId=event_AsfX3US6OdHBIghibc0j4, type=responsePeriodOutput_itemPeriodDone, responseId=resp_AsfX2yF5teyOCOyVSTCow, outputIndex=0, item=RealtimeConversationItem(id=item_AsfX2leMQadkxBACGBdgr, type=message, object=realtimePeriodItem, status=incomplete, role=assistant, content=[RealtimeConversationItemContent(type=audio, text=null, id=null, audio=null, transcript=Once upon a time in a bustling little town lived a man named Fred. Fred was known for his curiosity and his adventurous spirit. Every morning, he would set out with)], callId=null, name=null, arguments=null, output=null)))
+2025-01-22 16:38:45.624 17703-17785 RealtimeClient          com.swooby.alfredai                  D  onDataChannelText: type="response.done"
+2025-01-22 16:38:45.631 17703-17785 PushToTalkScreen        com.swooby.alfredai                  D  onServerEventResponseDone(RealtimeServerEventResponseDone(eventId=event_AsfX3UkPktMYSvQYvrS4h, type=responsePeriodDone, response=RealtimeResponse(id=resp_AsfX2yF5teyOCOyVSTCow, object=realtimePeriodResponse, status=cancelled, statusDetails=RealtimeResponseStatusDetails(type=cancelled, reason=client_cancelled, error=null), output=[RealtimeConversationItem(id=item_AsfX2leMQadkxBACGBdgr, type=message, object=realtimePeriodItem, status=incomplete, role=assistant, content=[RealtimeConversationItemContent(type=audio, text=null, id=null, audio=null, transcript=Once upon a time in a bustling little town lived a man named Fred. Fred was known for his curiosity and his adventurous spirit. Every morning, he would set out with)], callId=null, name=null, arguments=null, output=null)], metadata=null, usage=RealtimeResponseUsage(totalTokens=400, inputTokens=167, outputTokens=233, inputTokenDetails=RealtimeResponseUsageInputTokenDetails(cachedTokens=0, textTokens=130, audioTokens=37), outputTokenDetails=RealtimeResponseUsageOutputTokenDetails(textTokens=50, audioTokens=183)))))
+...
+2025-01-22 16:38:51.975 17703-17785 RealtimeClient          com.swooby.alfredai                  D  onDataChannelText: type="output_audio_buffer.audio_stopped"
+2025-01-22 16:38:51.976 17703-17785 RealtimeClient          com.swooby.alfredai                  W  onDataChannelText: unknown type=output_audio_buffer.audio_stopped
+                                         */
+                                        if (isCancelingResponse) {
+                                            showToast(context = context, text = "Cancelling Response; this can take a long time to complete.", duration = Toast.LENGTH_LONG)
                                         }
                                     }
                                 },

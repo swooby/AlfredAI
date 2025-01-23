@@ -11,6 +11,6 @@
 ## TODOs
 (Not necessarily in any order)
 1. `Wear` version (will involve moving some stuff to `Common`)
-2. Get `Reset` and `Stop` working
+2. Get `Reset` button working
 3. Add `text` input/output feature
 4. Get `Conversation/Transcription` enhancements

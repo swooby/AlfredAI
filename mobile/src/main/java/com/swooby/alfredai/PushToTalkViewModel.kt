@@ -36,6 +36,7 @@ import com.openai.models.RealtimeSessionModel
 import com.openai.models.RealtimeSessionVoice
 import com.swooby.alfred.common.openai.realtime.RealtimeClient
 import com.swooby.alfred.common.openai.realtime.RealtimeClient.RealtimeClientListener
+import com.swooby.alfred.common.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
 import com.swooby.alfredai.PushToTalkPreferences.Companion.getMaxResponseOutputTokens
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -339,6 +340,12 @@ class PushToTalkViewModel(private val application: Application)
         ) {
             listeners.forEach {
                 it.onServerEventInputAudioBufferSpeechStopped(realtimeServerEventInputAudioBufferSpeechStopped)
+            }
+        }
+
+        override fun onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped: ServerEventOutputAudioBufferAudioStopped) {
+            listeners.forEach {
+                it.onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped)
             }
         }
 
