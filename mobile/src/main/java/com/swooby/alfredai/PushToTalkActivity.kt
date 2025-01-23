@@ -160,7 +160,11 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
     val debugForceDontAutoConnect = BuildConfig.DEBUG && false
     @Suppress(
         "SimplifyBooleanWithConstants",
-        "KotlinConstantConditions",
+        "KotlinConstantConditions")
+    val debugConnectDelayMillis = if (BuildConfig.DEBUG && false) 10_000L else 0L
+    @Suppress(
+        "SimplifyBooleanWithConstants",
+        //"KotlinConstantConditions",
     )
     val debugLogConversation = BuildConfig.DEBUG && true
     @Suppress(
@@ -249,11 +253,8 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                     isConnectingOrConnected = true
                     conversationItems.clear()
                     jobConnect = CoroutineScope(Dispatchers.IO).launch {
-                        @Suppress("SimplifyBooleanWithConstants", "KotlinConstantConditions")
-                        val debugDelay = BuildConfig.DEBUG && false
-                        @Suppress("KotlinConstantConditions")
-                        if (debugDelay) {
-                            delay(10_000)
+                        if (debugConnectDelayMillis > 0) {
+                            delay(debugConnectDelayMillis)
                         }
                         val ephemeralApiKey = realtimeClient.connect()
                         Log.d(TAG, "ephemeralApiKey: $ephemeralApiKey")
@@ -921,14 +922,9 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                             IconButton(
                                 enabled = isConnected && !isCancelingResponse,
                                 onClick = {
-                                    if (true) {
-                                        showToast(context, "Reset Not Yet Implemented", Toast.LENGTH_SHORT)
-                                    } else {
-                                        pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
-                                            realtimeClient.dataSendInputAudioBufferClear()
-                                        }
-                                        conversationItems.clear()
-                                    }
+                                    disconnect()
+                                    connect()
+                                    showToast(context = context, text = "Reconnecting", forceInvokeOnMain = true)
                                 },
                                 modifier = Modifier
                                     .size(66.dp)
