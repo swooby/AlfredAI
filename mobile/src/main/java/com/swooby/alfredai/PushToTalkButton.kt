@@ -80,7 +80,7 @@ fun PushToTalkButton(
     val context = LocalContext.current
 
     val disabledColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.disabled)
-    val boxAlpha = if (enabled) 1.0f else 0.4f
+    val boxAlpha = if (enabled) 1.0f else 0.38f
 
     Box(
         contentAlignment = Alignment.Center,
@@ -147,7 +147,6 @@ fun PushToTalkButton(
             contentDescription = "Microphone",
             modifier = Modifier
                 .size(90.dp)
-                //.border(1.dp, Color.Magenta)
         )
     }
 }

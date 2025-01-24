@@ -8,6 +8,12 @@
 
 </div>
 
+## Questions
+
+1. Q: Why not just write this in React as a webapp, like:  
+   https://youtu.be/oMKOtYQljM4  
+   A: Because I want to:
+
 ## TODOs
 (Not necessarily in any order)
 1. `Wear` version (will involve moving some stuff to `Common`)

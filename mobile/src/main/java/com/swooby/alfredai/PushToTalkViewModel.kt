@@ -46,8 +46,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
 
-class PushToTalkViewModel(private val application: Application)
-    : AndroidViewModel(application) {
+class PushToTalkViewModel(private val application: Application) :
+    AndroidViewModel(application)
+{
     companion object {
         const val DEBUG = true
     }
