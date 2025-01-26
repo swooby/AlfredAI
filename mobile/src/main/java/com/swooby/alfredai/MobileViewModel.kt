@@ -1,7 +1,7 @@
 package com.swooby.alfredai
 
 import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import android.util.Log
 import com.openai.models.RealtimeServerEventConversationCreated
 import com.openai.models.RealtimeServerEventConversationItemCreated
 import com.openai.models.RealtimeServerEventConversationItemDeleted
@@ -34,10 +34,11 @@ import com.openai.models.RealtimeSessionCreateRequest
 import com.openai.models.RealtimeSessionInputAudioTranscription
 import com.openai.models.RealtimeSessionModel
 import com.openai.models.RealtimeSessionVoice
+import com.swooby.alfredai.PushToTalkPreferences.Companion.getMaxResponseOutputTokens
+import com.swooby.alfredai.Utils.playAudioResourceOnce
 import com.swooby.alfredai.openai.realtime.RealtimeClient
 import com.swooby.alfredai.openai.realtime.RealtimeClient.RealtimeClientListener
 import com.swooby.alfredai.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
-import com.swooby.alfredai.PushToTalkPreferences.Companion.getMaxResponseOutputTokens
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -46,12 +47,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
 
-class PushToTalkViewModel(private val application: Application) :
-    AndroidViewModel(application)
+class MobileViewModel(application: Application) :
+    SharedViewModel(application)
 {
     companion object {
         const val DEBUG = true
     }
+
+    override val TAG: String
+        get() = "MobileViewModel"
+    override val remoteTypeName: String
+        get() = "MOBILE"
+    override val remoteCapabilityName: String
+        get() = "verify_remote_example_wear_app"
 
     private val prefs = PushToTalkPreferences(application)
 
@@ -212,7 +220,7 @@ class PushToTalkViewModel(private val application: Application) :
         _realtimeClient?.disconnect()
 
         _realtimeClient = RealtimeClient(
-            application,
+            getApplication(),
             prefs.apiKey,
             sessionConfig,
             debug = DEBUG
@@ -220,6 +228,70 @@ class PushToTalkViewModel(private val application: Application) :
         _realtimeClient?.addListener(listener)
 
         return true
+    }
+
+    override fun pushToTalk(on: Boolean, sourceNodeId: String?) {
+        TODO("Not yet implemented")
+    }
+
+    override fun pushToTalkLocal(on: Boolean) {
+        super.pushToTalkLocal(on)
+        if (on) {
+            realtimeClient?.also { realtimeClient ->
+                Log.d(TAG, "")
+                Log.d(TAG, "+onPushToTalkStart: pttState=${pushToTalkState.value}")
+                // 1. Play the start sound
+                Log.d(TAG, "onPushToTalkStart: playing start sound")
+                playAudioResourceOnce(
+                    context = getApplication(),
+                    audioResourceId = R.raw.quindar_nasa_apollo_intro,
+                    volume = 0.2f,
+                ) {
+                    // 2. Wait for the start sound to finish
+                    Log.d(TAG, "onPushToTalkStart: start sound finished")
+                    // 3. Open the mic
+                    Log.d(TAG, "onPushToTalkStart: opening mic")
+                    realtimeClient.setLocalAudioTrackMicrophoneEnabled(true)
+                    Log.d(TAG, "onPushToTalkStart: mic opened")
+                    // 4. Wait for the mic to open successfully
+                    //...
+                    Log.d(TAG, "-onPushToTalkStart")
+                    Log.d(TAG, "")
+                }
+            }
+        } else {
+            realtimeClient?.also { realtimeClient ->
+                Log.d(TAG, "")
+                Log.d(TAG, "+onPushToTalkStop: pttState=${pushToTalkState.value}")
+                // 1. Close the mic
+                Log.d(TAG, "onPushToTalkStop: closing mic")
+                realtimeClient.setLocalAudioTrackMicrophoneEnabled(false)
+                Log.d(TAG, "onPushToTalkStop: mic closed")
+                // 2. Wait for the mic to close successfully
+                //...
+                // 3. Send input_audio_buffer.commit
+                Log.d(TAG, "onPushToTalkStop: sending input_audio_buffer.commit")
+                realtimeClient.dataSendInputAudioBufferCommit()
+                Log.d(TAG, "onPushToTalkStop: input_audio_buffer.commit sent")
+                // 4. Send response.create
+                Log.d(TAG, "onPushToTalkStop: sending response.create")
+                realtimeClient.dataSendResponseCreate()
+                Log.d(TAG, "onPushToTalkStop: response.create sent")
+                // 5. Play the stop sound
+                Log.d(TAG, "onPushToTalkStop: playing stop sound")
+                playAudioResourceOnce(
+                    context = getApplication(),
+                    audioResourceId = R.raw.quindar_nasa_apollo_outro,
+                    volume = 0.2f,
+                ) {
+                    // 6. Wait for the stop sound to finish
+                    Log.d(TAG, "onPushToTalkStop: stop sound finished")
+                    //...
+                    Log.d(TAG, "-onPushToTalkStop")
+                    Log.d(TAG, "")
+                }
+            }
+        }
     }
 
     //

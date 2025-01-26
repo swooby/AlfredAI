@@ -34,46 +34,41 @@ import androidx.wear.compose.material.ContentAlpha
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.TimeText
-import androidx.wear.phone.interactions.PhoneTypeHelper
 import androidx.wear.tooling.preview.devices.WearDevices
-import com.google.android.gms.wearable.DataClient
-import com.google.android.gms.wearable.DataEventBuffer
-import com.google.android.gms.wearable.MessageClient
-import com.google.android.gms.wearable.MessageEvent
-import com.google.android.gms.wearable.Node
-import com.google.android.gms.wearable.NodeClient
-import com.google.android.gms.wearable.PutDataMapRequest
-import com.google.android.gms.wearable.PutDataRequest
-import com.google.android.gms.wearable.Wearable
 import com.swooby.alfredai.R
-import com.swooby.alfredai.WearAppViewModel
+import com.swooby.alfredai.SharedViewModel
+import com.swooby.alfredai.WearViewModel
 import com.swooby.alfredai.presentation.theme.AlfredAITheme
 
-class MainActivity : ComponentActivity() {
+// TODO: If phone app is not running:
+//  https://developer.android.com/reference/androidx/wear/remote/interactions/RemoteActivityHelper
+// TODO: Use https://google.github.io/horologist/ ?
+
+class WearActivity : ComponentActivity() {
     companion object {
         private const val TAG = "MainActivity"
     }
 
-    private lateinit var wearAppViewModel: WearAppViewModel
+    private lateinit var wearViewModel: WearViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "onCreate()")
         installSplashScreen()
         super.onCreate(savedInstanceState)
 
-        wearAppViewModel = ViewModelProvider(this)[WearAppViewModel::class.java]
+        wearViewModel = ViewModelProvider(this)[WearViewModel::class.java]
 
         setTheme(android.R.style.Theme_DeviceDefault)
 
         setContent {
-            WearApp("Wear", wearAppViewModel)
+            WearApp("Wear", wearViewModel)
         }
     }
 
     override fun onDestroy() {
         Log.d(TAG, "onDestroy()")
         super.onDestroy()
-        wearAppViewModel.close()
+        wearViewModel.close()
     }
 }
 
@@ -86,15 +81,16 @@ fun DefaultPreview() {
 @Composable
 fun WearApp(
     greetingName: String,
-    wearAppViewModel: WearAppViewModel? = null,
+    wearViewModel: WearViewModel? = null,
 ) {
     @Suppress("LocalVariableName")
     val TAG = "WearApp"
 
-    val phoneAppNodeId by wearAppViewModel?.phoneAppNodeId?.collectAsState() ?: remember { mutableStateOf(null) }
+    val phoneAppNodeId by wearViewModel?.remoteAppNodeId?.collectAsState() ?: remember { mutableStateOf(null) }
 
     var isConnectingOrConnected by remember { mutableStateOf(false) }
     var isConnected = phoneAppNodeId != null
+    // by remember { mutableStateOf(false || nodeList.isNotEmpty()) }
 
     val disabledColor = MaterialTheme.colors.onSurface.copy(alpha = ContentAlpha.disabled)
 
@@ -134,58 +130,42 @@ fun WearApp(
                 }
             }
             PushToTalkButton(
+                wearViewModel = wearViewModel,
+                targetNameDefault = "Wear",
                 enabled = isConnected,
                 onPushToTalkStart = {
-                    @Suppress("NAME_SHADOWING")
-                    val phoneAppNodeId = phoneAppNodeId
-                    if (phoneAppNodeId != null) {
-                        Log.d(TAG, "onClick: PTT on phone...")
-                        wearAppViewModel?.sendPushToTalkCommand(phoneAppNodeId, true)
-                    } else {
-                        Log.d(TAG, "onClick: TODO: PTT on local ...")
-                        // ...
-                    }
-                    true
+                    wearViewModel?.pushToTalk(true)
                 },
                 onPushToTalkStop = {
-                    @Suppress("NAME_SHADOWING")
-                    val phoneAppNodeId = phoneAppNodeId
-                    if (phoneAppNodeId != null) {
-                        Log.d(TAG, "onClick: PTT off phone...")
-                        wearAppViewModel?.sendPushToTalkCommand(phoneAppNodeId, false)
-                    } else {
-                        Log.d(TAG, "onClick: TODO: PTT off local ...")
-                        // ...
-                    }
-                    true
+                    wearViewModel?.pushToTalk(false)
                 },
             )
         }
     }
 }
 
-enum class PTTState {
-    Idle,
-    Pressed
-}
-
 @Composable
 fun PushToTalkButton(
+    wearViewModel: WearViewModel? = null,
+    targetNameDefault: String,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
     iconIdle: Int = R.drawable.baseline_mic_24,
     iconPressed: Int = R.drawable.baseline_mic_24,
     iconDisabled: Int = R.drawable.baseline_mic_off_24,
-    onPushToTalkStart: (pttState: PTTState) -> Boolean = {
-        Log.d("PTT", "Push-to-Talk Start")
-        false
-    },
-    onPushToTalkStop: (pttState: PTTState) -> Boolean = {
-        Log.d("PTT", "Push-to-Talk Stop")
-        false
-    }
+    onPushToTalkStart: () -> Unit = {},
+    onPushToTalkStop: () -> Unit = {},
 ) {
-    var pttState by remember { mutableStateOf(PTTState.Idle) }
+    val pttState by wearViewModel
+        ?.pushToTalkState
+        ?.collectAsState()
+        ?: remember { mutableStateOf(SharedViewModel.PttState.Idle) }
+
+    val phoneAppNodeId by wearViewModel
+        ?.remoteAppNodeId
+        ?.collectAsState()
+        ?: remember { mutableStateOf(null) }
+    val targetName = if (phoneAppNodeId != null) "Phone" else targetNameDefault
 
     val disabledColor = MaterialTheme.colors.onSurface.copy(alpha = 0.38f)
     val boxAlpha = if (enabled) 1.0f else 0.38f
@@ -196,7 +176,7 @@ fun PushToTalkButton(
             .size(120.dp)
             .border(4.dp, if (enabled) MaterialTheme.colors.primary else disabledColor, shape = CircleShape)
             .background(
-                color = if (pttState == PTTState.Pressed) MaterialTheme.colors.primary else MaterialTheme.colors.surface,
+                color = if (pttState == SharedViewModel.PttState.Pressed) MaterialTheme.colors.primary else MaterialTheme.colors.surface,
                 shape = CircleShape
             )
             .let { baseModifier ->
@@ -204,23 +184,11 @@ fun PushToTalkButton(
                     baseModifier.pointerInput(Unit) {
                         awaitEachGesture {
                             awaitFirstDown()
-                            if (pttState == PTTState.Idle) {
-                                pttState = PTTState.Pressed
-                                if (!onPushToTalkStart(pttState)) {
-                                    //provideHapticFeedback(context)
-                                    //provideAudibleFeedback(context, pttState)
-                                }
-                            }
+                            onPushToTalkStart()
                             do {
                                 val event = awaitPointerEvent()
                             } while (event.changes.any { !it.changedToUp() })
-                            if (pttState == PTTState.Pressed) {
-                                pttState = PTTState.Idle
-                                if (!onPushToTalkStop(pttState)) {
-                                    //provideHapticFeedback(context)
-                                    //provideAudibleFeedback(context, pttState)
-                                }
-                            }
+                            onPushToTalkStop()
                         }
                     }
                 } else {
@@ -242,7 +210,7 @@ fun PushToTalkButton(
             }
     ) {
         val iconRes = if (enabled) {
-            if (pttState == PTTState.Pressed) {
+            if (pttState == SharedViewModel.PttState.Pressed) {
                 iconPressed
             } else {
                 iconIdle

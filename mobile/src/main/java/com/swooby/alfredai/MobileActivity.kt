@@ -18,6 +18,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -72,7 +73,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat.checkSelfPermission
-import androidx.lifecycle.ViewModelProvider
 import com.openai.infrastructure.ClientError
 import com.openai.infrastructure.ClientException
 import com.openai.models.RealtimeServerEventConversationCreated
@@ -117,31 +117,29 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.net.UnknownHostException
 
-class PushToTalkActivity : ComponentActivity() {
+class MobileActivity : ComponentActivity() {
     companion object {
         private const val TAG = "PushToTalkActivity"
     }
 
-    private lateinit var pushToTalkViewModel: PushToTalkViewModel
+    private val mobileViewModel: MobileViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "onCreate()")
         super.onCreate(savedInstanceState)
 
-        val app = application as AlfredAiApp
-        val factory = ViewModelProvider.AndroidViewModelFactory.getInstance(app)
-        pushToTalkViewModel = ViewModelProvider(app.appViewModelStore, factory)[PushToTalkViewModel::class.java]
-
         enableEdgeToEdge()
         setContent {
-            PushToTalkScreen(pushToTalkViewModel)
+            PushToTalkScreen(mobileViewModel)
         }
     }
 
     override fun onDestroy() {
         Log.d(TAG, "onDestroy()")
         super.onDestroy()
-        pushToTalkViewModel.realtimeClient?.disconnect()
+
+        // Temporary, until Background/Foreground Service is implemented
+        mobileViewModel.realtimeClient?.disconnect()
     }
 }
 
@@ -152,7 +150,7 @@ enum class ConversationSpeaker {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
+fun PushToTalkScreen(mobileViewModel: MobileViewModel? = null) {
     @Suppress("LocalVariableName")
     val TAG = "PushToTalkScreen"
 
@@ -229,7 +227,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
     //
 
     var showPreferences by remember {
-        mutableStateOf(debugForceShowPreferences || !(pushToTalkViewModel?.isConfigured ?: true))
+        mutableStateOf(debugForceShowPreferences || !(mobileViewModel?.isConfigured ?: true))
     }
     var onSaveButtonClick: (() -> Job?)? by remember { mutableStateOf(null) }
 
@@ -238,13 +236,13 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
     //
 
     var isConnectingOrConnected by remember {
-        mutableStateOf(pushToTalkViewModel?.isConnectingOrConnected ?: false)
+        mutableStateOf(mobileViewModel?.isConnectingOrConnected ?: false)
     }
     var isConnected by remember {
-        mutableStateOf(pushToTalkViewModel?.isConnected ?: false)
+        mutableStateOf(mobileViewModel?.isConnected ?: false)
     }
 
-    var isCancelingResponse by remember { mutableStateOf(pushToTalkViewModel?.realtimeClient?.isCancelingResponse ?: false) }
+    var isCancelingResponse by remember { mutableStateOf(mobileViewModel?.realtimeClient?.isCancelingResponse ?: false) }
 
     var isConnectSwitchOn by remember { mutableStateOf(false) }
     var isConnectSwitchManualOff by remember { mutableStateOf(false) }
@@ -254,8 +252,8 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
 
     fun connect() {
         Log.d(TAG, "connect()")
-        if (pushToTalkViewModel?.isConfigured == true) {
-            pushToTalkViewModel.realtimeClient?.also { realtimeClient ->
+        if (mobileViewModel?.isConfigured == true) {
+            mobileViewModel.realtimeClient?.also { realtimeClient ->
                 isConnectSwitchOn = true
                 if (!isConnectingOrConnected) {
                     isConnectingOrConnected = true
@@ -279,7 +277,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
     }
 
     fun connectIfAutoConnectAndNotManualOff() {
-        if (!debugForceDontAutoConnect && pushToTalkViewModel?.autoConnect?.value == true) {
+        if (!debugForceDontAutoConnect && mobileViewModel?.autoConnect?.value == true) {
             if (!isConnectSwitchManualOff) {
                 connect()
             }
@@ -306,7 +304,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
             Log.d(TAG, "...jobConnect canceled.")
         }
         if (!isClient) {
-            pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
+            mobileViewModel?.realtimeClient?.also { realtimeClient ->
                 Log.d(TAG, "Disconnecting RealtimeClient...")
                 realtimeClient.disconnect()
                 Log.d(TAG, "...RealtimeClient disconnected.")
@@ -718,10 +716,10 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
             }
         }
 
-        pushToTalkViewModel?.addListener(realtimeClientListener)
+        mobileViewModel?.addListener(realtimeClientListener)
 
         onDispose {
-            pushToTalkViewModel?.removeListener(realtimeClientListener)
+            mobileViewModel?.removeListener(realtimeClientListener)
         }
     }
     //
@@ -804,9 +802,9 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                         interceptBack = false
                     }
                     PushToTalkPreferenceScreen(
-                        pushToTalkViewModel = pushToTalkViewModel,
+                        mobileViewModel = mobileViewModel,
                         onSaveSuccess = {
-                            showPreferences = !(pushToTalkViewModel?.isConfigured ?: false)
+                            showPreferences = !(mobileViewModel?.isConfigured ?: false)
                         },
                         setSaveButtonCallback = {
                             onSaveButtonClick = it
@@ -868,7 +866,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                                         val paddingAmount = 60.dp
                                         val modifier: Modifier
                                         val textAlign: TextAlign
-                                        val inputAudioTranscription = pushToTalkViewModel?.inputAudioTranscription?.collectAsState()?.value
+                                        val inputAudioTranscription = mobileViewModel?.inputAudioTranscription?.collectAsState()?.value
                                         if (inputAudioTranscription != null) {
                                             when (item.speaker) {
                                                 ConversationSpeaker.Local -> {
@@ -1003,65 +1001,13 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                                 }
                             }
                             PushToTalkButton(
+                                mobileViewModel = mobileViewModel,
                                 enabled = isConnected && !isCancelingResponse,
-                                onPushToTalkStart = { pttState ->
-                                    pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
-                                        Log.d(TAG, "")
-                                        Log.d(TAG, "+onPushToTalkStart: pttState=$pttState")
-                                        // 1. Play the start sound
-                                        Log.d(TAG, "onPushToTalkStart: playing start sound")
-                                        playAudioResourceOnce(
-                                            context = pushToTalkViewModel.getApplication(),
-                                            audioResourceId = R.raw.quindar_nasa_apollo_intro,
-                                            volume = 0.2f,
-                                        ) {
-                                            // 2. Wait for the start sound to finish
-                                            Log.d(TAG, "onPushToTalkStart: start sound finished")
-                                            // 3. Open the mic
-                                            Log.d(TAG, "onPushToTalkStart: opening mic")
-                                            realtimeClient.setLocalAudioTrackMicrophoneEnabled(true)
-                                            Log.d(TAG, "onPushToTalkStart: mic opened")
-                                            // 4. Wait for the mic to open successfully
-                                            //...
-                                            Log.d(TAG, "-onPushToTalkStart")
-                                            Log.d(TAG, "")
-                                        }
-                                    }
-                                    true
+                                onPushToTalkStart = {
+                                    mobileViewModel?.pushToTalk(true)
                                 },
-                                onPushToTalkStop = { pttState ->
-                                    pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
-                                        Log.d(TAG, "")
-                                        Log.d(TAG, "+onPushToTalkStop: pttState=$pttState")
-                                        // 1. Close the mic
-                                        Log.d(TAG, "onPushToTalkStop: closing mic")
-                                        realtimeClient.setLocalAudioTrackMicrophoneEnabled(false)
-                                        Log.d(TAG, "onPushToTalkStop: mic closed")
-                                        // 2. Wait for the mic to close successfully
-                                        //...
-                                        // 3. Send input_audio_buffer.commit
-                                        Log.d(TAG, "onPushToTalkStop: sending input_audio_buffer.commit")
-                                        realtimeClient.dataSendInputAudioBufferCommit()
-                                        Log.d(TAG, "onPushToTalkStop: input_audio_buffer.commit sent")
-                                        // 4. Send response.create
-                                        Log.d(TAG, "onPushToTalkStop: sending response.create")
-                                        realtimeClient.dataSendResponseCreate()
-                                        Log.d(TAG, "onPushToTalkStop: response.create sent")
-                                        // 5. Play the stop sound
-                                        Log.d(TAG, "onPushToTalkStop: playing stop sound")
-                                        playAudioResourceOnce(
-                                            context = pushToTalkViewModel.getApplication(),
-                                            audioResourceId = R.raw.quindar_nasa_apollo_outro,
-                                            volume = 0.2f,
-                                        ) {
-                                            // 6. Wait for the stop sound to finish
-                                            Log.d(TAG, "onPushToTalkStop: stop sound finished")
-                                            //...
-                                            Log.d(TAG, "-onPushToTalkStop")
-                                            Log.d(TAG, "")
-                                        }
-                                    }
-                                    true
+                                onPushToTalkStop = {
+                                    mobileViewModel?.pushToTalk(false)
                                 },
                             )
                         }
@@ -1087,7 +1033,7 @@ fun PushToTalkScreen(pushToTalkViewModel: PushToTalkViewModel? = null) {
                             IconButton(
                                 enabled = isConnected && !isCancelingResponse,
                                 onClick = {
-                                    pushToTalkViewModel?.realtimeClient?.also { realtimeClient ->
+                                    mobileViewModel?.realtimeClient?.also { realtimeClient ->
                                         // If true, will be set back to false in onServerEventOutputAudioBufferAudioStopped
                                         isCancelingResponse = realtimeClient.dataSendResponseCancel()
                                         /*
