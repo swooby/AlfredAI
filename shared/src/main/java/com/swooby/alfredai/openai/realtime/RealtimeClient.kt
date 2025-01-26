@@ -1,4 +1,4 @@
-package com.swooby.alfred.common.openai.realtime
+package com.swooby.alfredai.openai.realtime
 
 import android.content.Context
 import android.media.AudioDeviceInfo
@@ -47,8 +47,8 @@ import com.openai.models.RealtimeServerEventSessionUpdated
 import com.openai.models.RealtimeSessionCreateRequest
 import com.openai.models.RealtimeSessionCreateResponse
 import com.openai.models.RealtimeSessionModel
-import com.swooby.alfred.common.Utils.extractValue
-import com.swooby.alfred.common.Utils.quote
+import com.swooby.alfredai.Utils.extractValue
+import com.swooby.alfredai.Utils.quote
 import com.swooby.alfredai.common.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -508,6 +508,14 @@ class RealtimeClient(private val applicationContext: Context,
     //
     //endregion
     //
+
+//    fun startRtcEventLog() {
+//        peerConnection?.startRtcEventLog(...)
+//    }
+//
+//    fun stopRtcEventLog() {
+//        peerConnection?.stopRtcEventLog()
+//    }
 
     private inline fun <reified T> dataSend(content: T, mediaType: String? = ApiClient.JsonMediaType): Boolean {
         when {

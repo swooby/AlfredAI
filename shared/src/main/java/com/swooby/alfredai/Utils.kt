@@ -1,7 +1,10 @@
-package com.swooby.alfred.common
+package com.swooby.alfredai
 
+import android.content.Context
+import android.media.MediaPlayer
 import android.util.JsonReader
 import android.util.Log
+import androidx.wear.phone.interactions.PhoneTypeHelper
 import java.io.IOException
 import java.io.StringReader
 import kotlin.reflect.KClass
@@ -85,5 +88,31 @@ object Utils {
         }.associate {
             it.getter.call() as Int to it.name
         }
+    }
+
+    fun playAudioResourceOnce(
+        context: Context,
+        audioResourceId: Int,
+        volume: Float = 0.7f,
+        state: Any? = null,
+        onCompletion: ((Any?) -> Unit)? = null
+    ) {
+        Log.d(TAG, "+playAudioResourceOnce(..., audioResourceId=$audioResourceId, ...)")
+        MediaPlayer.create(context, audioResourceId).apply {
+            setVolume(volume, volume)
+            setOnCompletionListener {
+                onCompletion?.invoke(state)
+                it.release()
+                Log.d(TAG, "-playAudioResourceOnce(..., audioResourceId=$audioResourceId, ...)")
+            }
+            start()
+        }
+    }
+
+    fun phoneDeviceTypeToString(phoneType: Int): String {
+        val map = getMapOfIntFieldsToNames(
+            PhoneTypeHelper::class,
+            "DEVICE_TYPE_")
+        return (map[phoneType] ?: "INVALID") + "($phoneType)"
     }
 }

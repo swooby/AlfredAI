@@ -34,9 +34,9 @@ import com.openai.models.RealtimeSessionCreateRequest
 import com.openai.models.RealtimeSessionInputAudioTranscription
 import com.openai.models.RealtimeSessionModel
 import com.openai.models.RealtimeSessionVoice
-import com.swooby.alfred.common.openai.realtime.RealtimeClient
-import com.swooby.alfred.common.openai.realtime.RealtimeClient.RealtimeClientListener
-import com.swooby.alfred.common.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
+import com.swooby.alfredai.openai.realtime.RealtimeClient
+import com.swooby.alfredai.openai.realtime.RealtimeClient.RealtimeClientListener
+import com.swooby.alfredai.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
 import com.swooby.alfredai.PushToTalkPreferences.Companion.getMaxResponseOutputTokens
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

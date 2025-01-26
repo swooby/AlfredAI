@@ -1,7 +1,7 @@
-package com.swooby.alfred.common.openai.realtime
+package com.swooby.alfredai.openai.realtime
 
 import android.util.Log
-import com.swooby.alfred.common.Utils.getShortClassName
+import com.swooby.alfredai.Utils.getShortClassName
 import kotlin.reflect.KClass
 
 class RealtimeLog(val TAG: String, var logLevel: Int = Log.DEBUG) {

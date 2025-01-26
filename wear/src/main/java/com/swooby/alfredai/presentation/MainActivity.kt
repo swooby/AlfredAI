@@ -46,7 +46,6 @@ import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.PutDataRequest
 import com.google.android.gms.wearable.Wearable
 import com.swooby.alfredai.R
-import com.swooby.alfredai.Utils.phoneDeviceTypeToString
 import com.swooby.alfredai.WearAppViewModel
 import com.swooby.alfredai.presentation.theme.AlfredAITheme
 

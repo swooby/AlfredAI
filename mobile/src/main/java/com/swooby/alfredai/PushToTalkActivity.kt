@@ -103,11 +103,11 @@ import com.openai.models.RealtimeServerEventResponseTextDelta
 import com.openai.models.RealtimeServerEventResponseTextDone
 import com.openai.models.RealtimeServerEventSessionCreated
 import com.openai.models.RealtimeServerEventSessionUpdated
-import com.swooby.alfred.common.Utils.quote
+import com.swooby.alfredai.Utils.playAudioResourceOnce
+import com.swooby.alfredai.Utils.quote
 import com.swooby.alfredai.AppUtils.showToast
-import com.swooby.alfred.common.openai.realtime.RealtimeClient
-import com.swooby.alfred.common.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
-import com.swooby.alfredai.AppUtils.playAudioResourceOnce
+import com.swooby.alfredai.openai.realtime.RealtimeClient
+import com.swooby.alfredai.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
 import com.swooby.alfredai.ui.theme.AlfredAITheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -118,9 +118,14 @@ import org.json.JSONObject
 import java.net.UnknownHostException
 
 class PushToTalkActivity : ComponentActivity() {
+    companion object {
+        private const val TAG = "PushToTalkActivity"
+    }
+
     private lateinit var pushToTalkViewModel: PushToTalkViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        Log.d(TAG, "onCreate()")
         super.onCreate(savedInstanceState)
 
         val app = application as AlfredAiApp
@@ -134,6 +139,7 @@ class PushToTalkActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        Log.d(TAG, "onDestroy()")
         super.onDestroy()
         pushToTalkViewModel.realtimeClient?.disconnect()
     }

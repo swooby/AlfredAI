@@ -87,5 +87,5 @@ dependencies {
 
     implementation(libs.jsoup)
 
-    implementation(project(":common"))
+    implementation(project(":shared"))
 }

@@ -42,25 +42,6 @@ object AppUtils {
         }
     }
 
-    fun playAudioResourceOnce(
-        context: Context,
-        audioResourceId: Int,
-        volume: Float = 0.7f,
-        state: Any? = null,
-        onCompletion: ((Any?) -> Unit)? = null
-    ) {
-        Log.d(TAG, "+playAudioResourceOnce(..., audioResourceId=$audioResourceId, ...)")
-        MediaPlayer.create(context, audioResourceId).apply {
-            setVolume(volume, volume)
-            setOnCompletionListener {
-                onCompletion?.invoke(state)
-                it.release()
-                Log.d(TAG, "-playAudioResourceOnce(..., audioResourceId=$audioResourceId, ...)")
-            }
-            start()
-        }
-    }
-
     @Composable
     fun annotatedStringFromHtml(resId: Int): AnnotatedString {
         return annotatedStringFromHtml(stringResource(id = resId))
