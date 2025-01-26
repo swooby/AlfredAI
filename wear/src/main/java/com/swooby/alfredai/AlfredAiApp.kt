@@ -19,24 +19,23 @@ inline fun <reified VM : ViewModel> ComponentActivity.appViewModels(): Lazy<VM> 
     )
 }
 
-class AlfredAiApp : Application(), ViewModelStoreOwner
-{
+class AlfredAiApp : Application(), ViewModelStoreOwner {
     override val viewModelStore = ViewModelStore()
 
-    val mobileViewModel by lazy {
+    val wearViewModel by lazy {
         ViewModelProvider(
             this,
             ViewModelProvider.AndroidViewModelFactory.getInstance(this)
-        )[MobileViewModel::class.java]
+        )[WearViewModel::class.java]
     }
 
     override fun onCreate() {
         super.onCreate()
-        mobileViewModel.init()
+        wearViewModel.init()
     }
 
     override fun onTerminate() {
         super.onTerminate()
-        mobileViewModel.close()
+        wearViewModel.close()
     }
 }

@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -13,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -35,9 +39,11 @@ import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.TimeText
 import androidx.wear.tooling.preview.devices.WearDevices
+import com.swooby.alfredai.AlfredAiApp
 import com.swooby.alfredai.R
 import com.swooby.alfredai.SharedViewModel
 import com.swooby.alfredai.WearViewModel
+import com.swooby.alfredai.appViewModels
 import com.swooby.alfredai.presentation.theme.AlfredAITheme
 
 // TODO: If phone app is not running:
@@ -49,17 +55,13 @@ class WearActivity : ComponentActivity() {
         private const val TAG = "MainActivity"
     }
 
-    private lateinit var wearViewModel: WearViewModel
+    private val wearViewModel: WearViewModel by appViewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "onCreate()")
         installSplashScreen()
         super.onCreate(savedInstanceState)
-
-        wearViewModel = ViewModelProvider(this)[WearViewModel::class.java]
-
         setTheme(android.R.style.Theme_DeviceDefault)
-
         setContent {
             WearApp("Wear", wearViewModel)
         }
@@ -68,29 +70,34 @@ class WearActivity : ComponentActivity() {
     override fun onDestroy() {
         Log.d(TAG, "onDestroy()")
         super.onDestroy()
-        wearViewModel.close()
     }
 }
 
 @Preview(device = WearDevices.SMALL_ROUND, showSystemUi = true)
 @Composable
 fun DefaultPreview() {
-    WearApp("Preview Wear")
+    WearApp("Preview")
 }
 
 @Composable
 fun WearApp(
-    greetingName: String,
+    targetNameDefault: String,
     wearViewModel: WearViewModel? = null,
 ) {
     @Suppress("LocalVariableName")
     val TAG = "WearApp"
 
-    val phoneAppNodeId by wearViewModel?.remoteAppNodeId?.collectAsState() ?: remember { mutableStateOf(null) }
+    val phoneAppNodeId by wearViewModel
+        ?.remoteAppNodeId
+        ?.collectAsState()
+        ?: remember { mutableStateOf(null) }
+    Log.d(TAG, "phoneAppNodeId is: $phoneAppNodeId")
+    LaunchedEffect(phoneAppNodeId) {
+        Log.d(TAG, "phoneAppNodeId changed to: $phoneAppNodeId")
+    }
 
     var isConnectingOrConnected by remember { mutableStateOf(false) }
-    var isConnected = phoneAppNodeId != null
-    // by remember { mutableStateOf(false || nodeList.isNotEmpty()) }
+    val isConnected = phoneAppNodeId != null
 
     val disabledColor = MaterialTheme.colors.onSurface.copy(alpha = ContentAlpha.disabled)
 
@@ -102,6 +109,9 @@ fun WearApp(
             contentAlignment = Alignment.Center
         ) {
             TimeText()
+            if (isConnected) {
+                KeepScreenOnComposable()
+            }
             Box {
                 when {
                     isConnected -> {
@@ -112,6 +122,7 @@ fun WearApp(
                             modifier = Modifier.size(150.dp)
                         )
                     }
+
                     isConnectingOrConnected -> {
                         CircularProgressIndicator(
                             indicatorColor = MaterialTheme.colors.primary,
@@ -119,6 +130,7 @@ fun WearApp(
                             modifier = Modifier.size(150.dp)
                         )
                     }
+
                     else -> {
                         CircularProgressIndicator(
                             progress = 0f,
@@ -204,9 +216,11 @@ fun PushToTalkButton(
             }
             .then(Modifier.background(Color.Transparent))
             .let {
-                it.background(Color.Transparent).graphicsLayer {
-                    this.alpha = boxAlpha
-                }
+                it
+                    .background(Color.Transparent)
+                    .graphicsLayer {
+                        this.alpha = boxAlpha
+                    }
             }
     ) {
         val iconRes = if (enabled) {
@@ -224,5 +238,16 @@ fun PushToTalkButton(
             modifier = Modifier
                 .size(90.dp)
         )
+    }
+}
+
+@Composable
+fun KeepScreenOnComposable() {
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        view.keepScreenOn = true
+        onDispose {
+            view.keepScreenOn = false
+        }
     }
 }

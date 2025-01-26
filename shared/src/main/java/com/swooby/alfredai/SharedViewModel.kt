@@ -25,10 +25,18 @@ abstract class SharedViewModel(application: Application) :
     protected abstract val remoteTypeName: String
     protected abstract val remoteCapabilityName: String
 
-    protected var _remoteAppNodeId = MutableStateFlow<String?>(null) // private mutable
+    private fun setRemoteAppNodeId(nodeId: String?) {
+        Log.i(TAG, "setRemoteAppNodeId(nodeId=${quote(nodeId)})")
+        _remoteAppNodeId.value = nodeId
+    }
+    private var _remoteAppNodeId = MutableStateFlow<String?>(null)
     val remoteAppNodeId = _remoteAppNodeId.asStateFlow() // public readonly
 
-    protected var _pushToTalkState = MutableStateFlow(PttState.Idle) // private mutable
+    protected fun setPushToTalkState(state: PttState) {
+        Log.i(TAG, "setPushToTalkState(state=$state)")
+        _pushToTalkState.value = state
+    }
+    private var _pushToTalkState = MutableStateFlow(PttState.Idle)
     val pushToTalkState = _pushToTalkState.asStateFlow() // public readonly
 
     private val capabilityClient by lazy { Wearable.getCapabilityClient(application) }
@@ -79,8 +87,8 @@ abstract class SharedViewModel(application: Application) :
         return messageClient
             .sendMessage(nodeId, path, data)
             .addOnFailureListener { e ->
-                Log.e(TAG, "sendMessageToNode: Message failed.", e)
-                _remoteAppNodeId.value = null
+                Log.e(TAG, "sendMessageToNode: Message failed", e)
+                setRemoteAppNodeId(null)
             }
     }
 
@@ -99,8 +107,8 @@ abstract class SharedViewModel(application: Application) :
 
     private fun handlePingCommand(messageEvent: MessageEvent) {
         val nodeId = messageEvent.sourceNodeId
-        _remoteAppNodeId.value = nodeId
-        Log.i(TAG, "handlePingCommand: Got ping request from $remoteTypeName app nodeId=${quote(nodeId)}; Responding pong...")
+        Log.i(TAG, "handlePingCommand: Ping request from $remoteTypeName app nodeId=${quote(nodeId)}; Responding pong...")
+        setRemoteAppNodeId(nodeId)
         sendPongCommand(nodeId)
     }
 
@@ -110,8 +118,8 @@ abstract class SharedViewModel(application: Application) :
 
     private fun handlePongCommand(messageEvent: MessageEvent) {
         val nodeId = messageEvent.sourceNodeId
-        _remoteAppNodeId.value = nodeId
-        Log.i(TAG, "handlePongCommand: Got pong response from MOBILE app nodeId=${quote(nodeId)}")
+        Log.i(TAG, "handlePongCommand: Pong response from $remoteTypeName app nodeId=${quote(nodeId)}")
+        setRemoteAppNodeId(nodeId)
     }
 
     protected fun sendPushToTalkCommand(nodeId: String, on: Boolean): Task<Int> {
@@ -121,12 +129,13 @@ abstract class SharedViewModel(application: Application) :
     }
 
     private fun handlePushToTalkCommand(messageEvent: MessageEvent) {
-        val payload = messageEvent.data
-        val payloadString = String(payload)
-        Log.i(TAG, "handlePushToTalkCommand: PushToTalk command received! payloadString=${quote(payloadString)}")
+        val nodeId = messageEvent.sourceNodeId
+        val payloadString = String(messageEvent.data)
+        Log.i(TAG, "handlePushToTalkCommand: PushToTalk request from $remoteTypeName app nodeId=${quote(nodeId)}! payloadString=${quote(payloadString)}")
+        setRemoteAppNodeId(nodeId)
         when (payloadString) {
-            "on" -> pushToTalk(true, sourceNodeId = messageEvent.sourceNodeId)
-            "off" -> pushToTalk(false, sourceNodeId = messageEvent.sourceNodeId)
+            "on" -> pushToTalk(true, sourceNodeId = nodeId)
+            "off" -> pushToTalk(false, sourceNodeId = nodeId)
         }
     }
 

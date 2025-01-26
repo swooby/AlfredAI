@@ -59,7 +59,7 @@ class MobileViewModel(application: Application) :
     override val remoteTypeName: String
         get() = "MOBILE"
     override val remoteCapabilityName: String
-        get() = "verify_remote_example_wear_app"
+        get() = "verify_remote_alfredai_wear_app"
 
     private val prefs = PushToTalkPreferences(application)
 
@@ -231,7 +231,38 @@ class MobileViewModel(application: Application) :
     }
 
     override fun pushToTalk(on: Boolean, sourceNodeId: String?) {
-        TODO("Not yet implemented")
+        Log.i(TAG, "pushToTalk(on=$on)")
+        if (on) {
+            if (pushToTalkState.value != PttState.Pressed) {
+                setPushToTalkState(PttState.Pressed)
+                playAudioResourceOnce(getApplication(), R.raw.quindar_nasa_apollo_intro)
+                //provideHapticFeedback(context)
+            }
+        } else {
+            if (pushToTalkState.value != PttState.Idle) {
+                setPushToTalkState(PttState.Idle)
+                playAudioResourceOnce(getApplication(), R.raw.quindar_nasa_apollo_outro)
+                //provideHapticFeedback(context)
+            }
+        }
+
+        if (sourceNodeId == null) {
+            // request from local/mobile
+            Log.d(TAG, "pushToTalk: PTT $on **from** local/mobile...")
+            val remoteAppNodeId = remoteAppNodeId.value
+            if (remoteAppNodeId != null) {
+                // tell remote/wear app that we are PTTing...
+                sendPushToTalkCommand(remoteAppNodeId, on)
+            }
+            //...
+        } else {
+            // request from remote/wear
+            //_remoteAppNodeId.value = sourceNodeId
+            Log.d(TAG, "pushToTalk: PTT $on **from** remote/wear...")
+            //...
+        }
+
+        pushToTalkLocal(on)
     }
 
     override fun pushToTalkLocal(on: Boolean) {

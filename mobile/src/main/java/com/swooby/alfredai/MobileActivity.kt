@@ -67,6 +67,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -122,15 +123,14 @@ class MobileActivity : ComponentActivity() {
         private const val TAG = "PushToTalkActivity"
     }
 
-    private val mobileViewModel: MobileViewModel by viewModels()
+    private val mobileViewModel: MobileViewModel by appViewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "onCreate()")
         super.onCreate(savedInstanceState)
-
         enableEdgeToEdge()
         setContent {
-            PushToTalkScreen(mobileViewModel)
+            MobileApp(mobileViewModel)
         }
     }
 
@@ -150,9 +150,9 @@ enum class ConversationSpeaker {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun PushToTalkScreen(mobileViewModel: MobileViewModel? = null) {
+fun MobileApp(mobileViewModel: MobileViewModel? = null) {
     @Suppress("LocalVariableName")
-    val TAG = "PushToTalkScreen"
+    val TAG = "MobileApp"
 
     @Suppress(
         "SimplifyBooleanWithConstants",
@@ -973,6 +973,9 @@ fun PushToTalkScreen(mobileViewModel: MobileViewModel? = null) {
                             ,
                             contentAlignment = Alignment.Center
                         ) {
+                            if (isConnected) {
+                                KeepScreenOnComposable()
+                            }
                             Box {
                                 when {
                                     isConnected -> {
@@ -1086,13 +1089,24 @@ fun PushToTalkScreen(mobileViewModel: MobileViewModel? = null) {
     //
 }
 
+@Composable
+fun KeepScreenOnComposable() {
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        view.keepScreenOn = true
+        onDispose {
+            view.keepScreenOn = false
+        }
+    }
+}
+
 @Preview(
     uiMode = Configuration.UI_MODE_NIGHT_NO,
     showBackground = true
 )
 @Composable
 fun PushToTalkButtonActivityPreviewLight() {
-    PushToTalkScreen()
+    MobileApp()
 }
 
 @Preview(
@@ -1101,5 +1115,5 @@ fun PushToTalkButtonActivityPreviewLight() {
 )
 @Composable
 fun PushToTalkButtonActivityPreviewDark() {
-    PushToTalkScreen()
+    MobileApp()
 }
