@@ -218,7 +218,7 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
             conversationItems.add(
                 ConversationItem(
                     id = "$i",
-                    ConversationSpeaker.entries.random(),
+                    speaker = ConversationSpeaker.entries.random(),
                     initialText = generateRandomSentence()
                 )
             )
@@ -547,10 +547,10 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                 val id = realtimeServerEventConversationItemInputAudioTranscriptionCompleted.itemId
                 val transcript =
                     realtimeServerEventConversationItemInputAudioTranscriptionCompleted.transcript.trim() // DO TRIM!
-                if (debugLogConversation) {
-                    Log.w(TAG, "onServerEventConversationItemInputAudioTranscriptionCompleted: conversationItems.add(ConversationItem(id=${quote(id)}, initialText=${quote(transcript)}")
-                }
                 if (transcript.isNotBlank()) {
+                    if (debugLogConversation) {
+                        Log.w(TAG, "onServerEventConversationItemInputAudioTranscriptionCompleted: conversationItems.add(ConversationItem(id=${quote(id)}, initialText=${quote(transcript)}")
+                    }
                     conversationItems.add(
                         ConversationItem(
                             id = id,
@@ -617,13 +617,15 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
 
             override fun onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped: ServerEventOutputAudioBufferAudioStopped) {
                 Log.d(TAG, "onServerEventOutputAudioBufferAudioStopped($realtimeServerEventOutputAudioBufferAudioStopped)")
-                isCancelingResponse = false
-                showToast(
-                    context = context,
-                    text = "Response canceled",
-                    duration = Toast.LENGTH_SHORT,
-                    forceInvokeOnMain = true,
-                )
+                if (isCancelingResponse) {
+                    isCancelingResponse = false
+                    showToast(
+                        context = context,
+                        text = "Response canceled",
+                        duration = Toast.LENGTH_SHORT,
+                        forceInvokeOnMain = true,
+                    )
+                }
             }
 
             override fun onServerEventRateLimitsUpdated(
