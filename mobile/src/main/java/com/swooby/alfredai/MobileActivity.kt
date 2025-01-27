@@ -37,11 +37,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 //noinspection UsingMaterialAndMaterial3Libraries
 import androidx.compose.material.ContentAlpha
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -60,7 +62,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -70,9 +71,16 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -528,6 +536,22 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                 if (debugLogConversation) {
                     Log.d(TAG, "onServerEventConversationItemCreated($realtimeServerEventConversationItemCreated)")
                 }
+                val item = realtimeServerEventConversationItemCreated.item
+                val id = item.id
+                val content = item.content
+                val text = content?.joinToString(separator = "") { it.text ?: "" } ?: ""
+                if (text.isNotBlank()) {
+                    if (debugLogConversation) {
+                        Log.w(TAG, "onServerEventConversationItemCreated: conversationItems.add(ConversationItem(id=${quote(id)}, initialText=${quote(text)}")
+                    }
+                    conversationItems.add(
+                        ConversationItem(
+                            id = id,
+                            speaker = ConversationSpeaker.Local,
+                            initialText = text
+                        )
+                    )
+                }
             }
 
             override fun onServerEventConversationItemDeleted(
@@ -793,6 +817,12 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                     showToast(context = context, text = "Session Updated", forceInvokeOnMain = true)
                 }
             }
+
+            override fun onServerEventSessionExpired(realtimeServerEventError: RealtimeServerEventError) {
+                Log.d(TAG, "onServerEventSessionExpired($realtimeServerEventError)")
+                val text = "Session Expired: ${realtimeServerEventError.error.message}"
+                showToast(context = context, text = text, forceInvokeOnMain = true)
+            }
         }
 
         mobileViewModel?.addListener(realtimeClientListener)
@@ -934,72 +964,132 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                     )
                                 }
                             }
-                            Row {
-                                LazyColumn(
-                                    modifier = Modifier
-                                        .border(
-                                            1.dp,
-                                            Color.LightGray,
-                                            shape = RoundedCornerShape(8.dp)
-                                        )
-                                        .fillMaxSize(),
-                                    contentPadding = PaddingValues(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                                    state = conversationListState,
-                                ) {
-                                    items(
-                                        count = conversationItems.size,
-                                    ) { index ->
-                                        val item = conversationItems[index]
-                                        val paddingAmount = 60.dp
-                                        val modifier: Modifier
-                                        val textAlign: TextAlign
-                                        val inputAudioTranscription =
-                                            mobileViewModel?.inputAudioTranscription?.collectAsState()?.value
-                                        if (inputAudioTranscription != null) {
-                                            when (item.speaker) {
-                                                ConversationSpeaker.Local -> {
-                                                    modifier = Modifier
-                                                        .padding(start = paddingAmount)
-                                                    textAlign = TextAlign.End
-                                                }
-
-                                                ConversationSpeaker.Remote -> {
-                                                    modifier = Modifier
-                                                        .padding(end = paddingAmount)
-                                                    textAlign = TextAlign.Start
-                                                }
-                                            }
-                                        } else {
-                                            modifier = Modifier
+                            LazyColumn(
+                                modifier = Modifier
+                                    .border(
+                                        1.dp,
+                                        Color.LightGray,
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                contentPadding = PaddingValues(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                state = conversationListState,
+                            ) {
+                                items(
+                                    count = conversationItems.size,
+                                ) { index ->
+                                    val item = conversationItems[index]
+                                    val avatarResId: Int
+                                    val horizontalAlignment: Arrangement.Horizontal
+                                    val contentAlignment: Alignment
+                                    val textAlign: TextAlign
+                                    when (item.speaker) {
+                                        ConversationSpeaker.Local -> {
+                                            avatarResId = R.drawable.baseline_person_24
+                                            horizontalAlignment = Arrangement.Start
+                                            contentAlignment = Alignment.CenterStart
                                             textAlign = TextAlign.Start
                                         }
-                                        Row(
+                                        ConversationSpeaker.Remote -> {
+                                            avatarResId = R.drawable.baseline_memory_24
+                                            horizontalAlignment = Arrangement.End
+                                            contentAlignment = Alignment.CenterEnd
+                                            textAlign = TextAlign.End
+                                        }
+                                    }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = horizontalAlignment
+                                    ) {
+                                        if (item.speaker == ConversationSpeaker.Local) {
+                                            Icon(
+                                                painterResource(id = avatarResId),
+                                                contentDescription = "Local",
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                        }
+                                        Box(
                                             modifier = Modifier
-                                                .then(modifier),
-                                            verticalAlignment = Alignment.CenterVertically
+                                                .weight(1f),
+                                            contentAlignment = contentAlignment
                                         ) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .border(
-                                                        1.dp,
-                                                        Color.Gray,
-                                                        shape = RoundedCornerShape(8.dp)
-                                                    )
-                                                    .padding(8.dp),
-                                            ) {
-                                                SelectionContainer {
-                                                    Text(
-                                                        modifier = Modifier
-                                                            .fillMaxWidth(),
-                                                        text = item.text,
-                                                        textAlign = textAlign,
-                                                    )
-                                                }
+                                            SelectionContainer {
+                                                Text(
+                                                    modifier = Modifier
+                                                        .border(
+                                                            1.dp,
+                                                            Color.Gray,
+                                                            shape = RoundedCornerShape(8.dp)
+                                                        )
+                                                        .padding(8.dp),
+                                                    text = item.text,
+                                                    textAlign = textAlign,
+                                                )
                                             }
+                                        }
+                                        if (item.speaker == ConversationSpeaker.Remote) {
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Icon(
+                                                painterResource(id = avatarResId),
+                                                contentDescription = "Remote",
+                                            )
                                         }
                                     }
                                 }
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .padding(top = 6.dp)
+                                    .fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                var inputText by remember { mutableStateOf("") }
+
+                                fun doSendInputText() {
+                                    mobileViewModel?.realtimeClient?.also { realtimeClient ->
+                                        realtimeClient.dataSendConversationItemCreate(inputText.trim())
+                                        realtimeClient.dataSendResponseCreate()
+                                        inputText = ""
+                                    }
+                                }
+
+                                TextField(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .onKeyEvent { event ->
+                                            if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) {
+                                                if (event.isCtrlPressed) {
+                                                    doSendInputText()
+                                                    true
+                                                } else {
+                                                    false
+                                                }
+                                            } else {
+                                                false
+                                            }
+                                        },
+                                    keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Default),
+                                    singleLine = false,
+                                    enabled = isConnected,
+                                    label = { Text("Text Input") },
+                                    value = inputText,
+                                    onValueChange = { inputText = it },
+                                    trailingIcon = {
+                                        IconButton(
+                                            enabled = isConnected && inputText.trim().isNotBlank(),
+                                            onClick = { doSendInputText() }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Filled.Send,
+                                                contentDescription = "Send"
+                                            )
+                                        }
+                                    },
+                                )
                             }
                         }
                     }

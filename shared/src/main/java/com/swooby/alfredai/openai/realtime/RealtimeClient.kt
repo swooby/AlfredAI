@@ -11,11 +11,14 @@ import com.openai.infrastructure.RequestConfig
 import com.openai.infrastructure.RequestMethod
 import com.openai.infrastructure.Serializer
 import com.openai.infrastructure.Success
+import com.openai.models.RealtimeClientEventConversationItemCreate
 import com.openai.models.RealtimeClientEventInputAudioBufferClear
 import com.openai.models.RealtimeClientEventInputAudioBufferCommit
 import com.openai.models.RealtimeClientEventResponseCancel
 import com.openai.models.RealtimeClientEventResponseCreate
 import com.openai.models.RealtimeClientEventSessionUpdate
+import com.openai.models.RealtimeConversationItem
+import com.openai.models.RealtimeConversationItemContent
 import com.openai.models.RealtimeServerEventConversationCreated
 import com.openai.models.RealtimeServerEventConversationItemCreated
 import com.openai.models.RealtimeServerEventConversationItemDeleted
@@ -604,10 +607,27 @@ class RealtimeClient(private val applicationContext: Context,
     // TODO:(pv implement audio inputs and outputs
     // https://platform.openai.com/docs/guides/realtime-model-capabilities#audio-inputs-and-outputs
     // https://platform.openai.com/docs/guides/realtime-model-capabilities#handling-audio-with-websockets
-    //
 
-    // TODO:(pv) implement text inputs and outputs
-    //  https://platform.openai.com/docs/guides/realtime-model-capabilities#text-inputs-and-outputs
+    /**
+     * https://platform.openai.com/docs/guides/realtime-model-capabilities#text-inputs-and-outputs
+     */
+    fun dataSendConversationItemCreate(text: String): Boolean {
+        return dataSend(
+            RealtimeClientEventConversationItemCreate(
+                eventId = RealtimeUtils.generateId(),
+                item = RealtimeConversationItem(
+                    type = RealtimeConversationItem.Type.message,
+                    role = RealtimeConversationItem.Role.user,
+                    content = listOf(
+                        RealtimeConversationItemContent(
+                            type = RealtimeConversationItemContent.Type.input_text,
+                            text = text
+                        )
+                    )
+                )
+            )
+        )
+    }
 
     //
     //region Event Listener
@@ -675,6 +695,7 @@ class RealtimeClient(private val applicationContext: Context,
         fun onServerEventResponseTextDone(realtimeServerEventResponseTextDone: RealtimeServerEventResponseTextDone)
         fun onServerEventSessionCreated(realtimeServerEventSessionCreated: RealtimeServerEventSessionCreated)
         fun onServerEventSessionUpdated(realtimeServerEventSessionUpdated: RealtimeServerEventSessionUpdated)
+        fun onServerEventSessionExpired(realtimeServerEventError: RealtimeServerEventError)
     }
 
     private val listeners = mutableListOf<RealtimeClientListener>()
@@ -928,8 +949,30 @@ class RealtimeClient(private val applicationContext: Context,
     }
 
     private fun notifyServerEventError(realtimeServerEventError: RealtimeServerEventError) {
-        listeners.forEach {
-            it.onServerEventError(realtimeServerEventError)
+        val error = realtimeServerEventError.error
+        if (error.code == "session_expired") {
+            /*
+            onServerEventError(
+                RealtimeServerEventError(
+                    eventId=event_Au2On9AZVDzkdjCMStXVm,
+                    type=error,
+                    error=RealtimeServerEventErrorError(
+                        type=invalid_request_error,
+                        message=Your session hit the maximum duration of 30 minutes.,
+                        code=session_expired,
+                        param=null,
+                        eventId=null
+                    )
+                )
+            )
+            */
+            listeners.forEach {
+                it.onServerEventSessionExpired(realtimeServerEventError)
+            }
+        } else {
+            listeners.forEach {
+                it.onServerEventError(realtimeServerEventError)
+            }
         }
     }
 

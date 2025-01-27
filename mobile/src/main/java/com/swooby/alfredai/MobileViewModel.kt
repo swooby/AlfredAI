@@ -589,6 +589,12 @@ class MobileViewModel(application: Application) :
                 it.onServerEventSessionUpdated(realtimeServerEventSessionUpdated)
             }
         }
+
+        override fun onServerEventSessionExpired(realtimeServerEventError: RealtimeServerEventError) {
+            listeners.forEach {
+                it.onServerEventSessionExpired(realtimeServerEventError)
+            }
+        }
     }
 
     fun addListener(listener: RealtimeClientListener) {
