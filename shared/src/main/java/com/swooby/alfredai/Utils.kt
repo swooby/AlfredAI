@@ -109,10 +109,28 @@ object Utils {
         }
     }
 
+    fun getFriendlyPermissionName(permission: String): String {
+        return when (permission) {
+            android.Manifest.permission.RECORD_AUDIO
+                -> "Microphone"
+
+            android.Manifest.permission.BLUETOOTH,
+            android.Manifest.permission.BLUETOOTH_CONNECT,
+            android.Manifest.permission.BLUETOOTH_SCAN,
+                -> "Nearby devices"
+
+            //...
+
+            else
+                -> permission
+        }
+    }
+
     fun phoneDeviceTypeToString(phoneType: Int): String {
         val map = getMapOfIntFieldsToNames(
             PhoneTypeHelper::class,
-            "DEVICE_TYPE_")
+            "DEVICE_TYPE_"
+        )
         return (map[phoneType] ?: "INVALID") + "($phoneType)"
     }
 }

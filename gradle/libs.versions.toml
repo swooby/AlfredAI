@@ -3,6 +3,7 @@ activity = "1.10.0"
 activityCompose = "1.10.0"
 agp = "8.8.0"
 appcompat = "1.7.0"
+audioswitch = "1.2.0"
 composeBom = "2025.01.00"
 composeFoundation = "1.4.0"
 composeMaterial = "1.4.0"
@@ -37,6 +38,7 @@ wearPhoneInteractions = "1.0.1"
 
 [libraries]
 androidx-material = { module = "androidx.compose.material:material" }
+audioswitch = { module = "com.twilio:audioswitch", version.ref = "audioswitch" }
 firebase-analytics = { module = "com.google.firebase:firebase-analytics" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }

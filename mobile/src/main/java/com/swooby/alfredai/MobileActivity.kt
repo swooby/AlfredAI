@@ -1,6 +1,6 @@
 package com.swooby.alfredai
 
-import android.Manifest.permission.RECORD_AUDIO
+import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
@@ -18,7 +18,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.viewModels
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -44,14 +43,19 @@ import androidx.compose.material.ContentAlpha
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -107,6 +111,7 @@ import com.openai.models.RealtimeServerEventSessionUpdated
 import com.swooby.alfredai.Utils.playAudioResourceOnce
 import com.swooby.alfredai.Utils.quote
 import com.swooby.alfredai.AppUtils.showToast
+import com.swooby.alfredai.Utils.getFriendlyPermissionName
 import com.swooby.alfredai.openai.realtime.RealtimeClient
 import com.swooby.alfredai.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
 import com.swooby.alfredai.ui.theme.AlfredAITheme
@@ -159,20 +164,25 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
         "KotlinConstantConditions",
     )
     val debugForceShowPreferences = BuildConfig.DEBUG && false
+
     @Suppress(
         "SimplifyBooleanWithConstants",
         "KotlinConstantConditions",
     )
     val debugForceDontAutoConnect = BuildConfig.DEBUG && false
+
     @Suppress(
         "SimplifyBooleanWithConstants",
-        "KotlinConstantConditions")
+        "KotlinConstantConditions",
+    )
     val debugConnectDelayMillis = if (BuildConfig.DEBUG && false) 10_000L else 0L
+
     @Suppress(
         "SimplifyBooleanWithConstants",
         //"KotlinConstantConditions",
     )
     val debugLogConversation = BuildConfig.DEBUG && true
+
     @Suppress(
         "SimplifyBooleanWithConstants",
         "KotlinConstantConditions",
@@ -205,11 +215,13 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
         }
 
         for (i in 0..20) {
-            conversationItems.add(ConversationItem(
-                id = "$i",
-                ConversationSpeaker.entries.random(),
-                initialText = generateRandomSentence()
-            ))
+            conversationItems.add(
+                ConversationItem(
+                    id = "$i",
+                    ConversationSpeaker.entries.random(),
+                    initialText = generateRandomSentence()
+                )
+            )
         }
     }
     val conversationListState = rememberLazyListState()
@@ -242,7 +254,11 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
         mutableStateOf(mobileViewModel?.isConnected ?: false)
     }
 
-    var isCancelingResponse by remember { mutableStateOf(mobileViewModel?.realtimeClient?.isCancelingResponse ?: false) }
+    var isCancelingResponse by remember {
+        mutableStateOf(
+            mobileViewModel?.realtimeClient?.isCancelingResponse ?: false
+        )
+    }
 
     var isConnectSwitchOn by remember { mutableStateOf(false) }
     var isConnectSwitchManualOff by remember { mutableStateOf(false) }
@@ -320,44 +336,82 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
     //region Permissions
     //
 
-    var hasAllRequiredPermissions by remember { mutableStateOf(
-        checkSelfPermission(context, RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+    val requiredPermissions = remember {
+        mutableStateListOf(
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.BLUETOOTH,
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.BLUETOOTH_SCAN,
+        )
     }
-    var requestPermissionLauncher: ActivityResultLauncher<String>? = null
-    requestPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted: Boolean ->
-        hasAllRequiredPermissions = isGranted
-        if (isGranted) {
+
+    var hasAllRequiredPermissions by remember {
+        mutableStateOf(
+            requiredPermissions.all {
+                checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+            }
+        )
+    }
+
+    var requestPermissionsLauncher: ActivityResultLauncher<Array<String>>? = null
+    requestPermissionsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissionsResult: Map<String, Boolean> ->
+        val allGranted = permissionsResult.values.all { it }
+        hasAllRequiredPermissions = allGranted
+        if (allGranted) {
             Log.d(TAG, "All required permissions granted")
+            mobileViewModel?.audioSwitchStart()
             connectIfAutoConnectAndNotManualOff()
         } else {
             Log.d(TAG, "All required permissions NOT granted")
-            val activity = (context as? Activity)
-            if (activity != null) {
-                if (ActivityCompat.shouldShowRequestPermissionRationale(activity, RECORD_AUDIO)) {
-                    // Show rationale dialog and re-request permission
+            (context as? Activity)?.let { activity ->
+                var anyDenied = false
+                val shouldShowRequestPermissionRationale = mutableSetOf<String>()
+                requiredPermissions.forEach { permission ->
+                    // If this particular permission was *not* granted, handle it:
+                    if (permissionsResult[permission] == false) {
+                        if (ActivityCompat.shouldShowRequestPermissionRationale(
+                                activity,
+                                permission
+                            )
+                        ) {
+                            shouldShowRequestPermissionRationale.add(getFriendlyPermissionName(permission))
+                        } else {
+                            anyDenied = true
+                        }
+                    }
+                }
+                if (shouldShowRequestPermissionRationale.isNotEmpty()) {
+                    // Show rationale dialog and allow the user to try again
+                    val permissionsText = shouldShowRequestPermissionRationale.joinToString("\", \"")
                     AlertDialog.Builder(activity)
                         .setTitle("Permission Required")
-                        .setMessage("This app needs microphone access to provide the feature. Please grant the permission.")
+                        .setMessage("This app needs “${permissionsText}” permissions for full functionality.\nPlease grant the permission.")
                         .setPositiveButton("Grant") { _, _ ->
-                            requestPermissionLauncher?.launch(RECORD_AUDIO)
+                            requestPermissionsLauncher!!.launch(requiredPermissions.toTypedArray())
                         }
                         .setNegativeButton("Cancel", null)
                         .show()
                 } else {
-                    // "Don't ask again" selected. Guide user to settings.
-                    AlertDialog.Builder(activity)
-                        .setTitle("Permission Required")
-                        .setMessage("Microphone permission has been permanently denied. Please enable it in app settings.")
-                        .setPositiveButton("Open Settings") { _, _ ->
-                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                data = Uri.fromParts("package", activity.packageName, null)
+                    if (anyDenied) {
+                        // User selected “don’t ask again” or system can’t show rationale.
+                        // Guide the user to app settings.
+                        AlertDialog.Builder(activity)
+                            .setTitle("Permission Required")
+                            .setMessage("Some required permissions have been denied.\nPlease enable them in app settings.")
+                            .setPositiveButton("Open Settings") { _, _ ->
+                                val intent =
+                                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                        data = Uri.fromParts("package", activity.packageName, null)
+                                    }
+                                activity.startActivity(intent)
                             }
-                            activity.startActivity(intent)
-                        }
-                        .setNegativeButton("Cancel", null)
-                        .show()
+                            .setNegativeButton("Cancel", null)
+                            .show()
+                    } else {
+                        // ignore; weird that this says it is required :/
+                    }
                 }
             }
         }
@@ -397,6 +451,7 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                         */
                         "Mysterious \"Unable to resolve host `api.openai.com`\" error; Try again."
                     }
+
                     is ClientException -> {
                         var message: String? = error.message ?: error.toString()
                         val response = error.response as? ClientError<*>
@@ -417,9 +472,15 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                         }
                         "ClientException: ${quote(message)}"
                     }
+
                     else -> "Error: ${error.message}"
                 }
-                showToast(context = context, text = text, duration = Toast.LENGTH_LONG, forceInvokeOnMain = true)
+                showToast(
+                    context = context,
+                    text = text,
+                    duration = Toast.LENGTH_LONG,
+                    forceInvokeOnMain = true
+                )
             }
 
             override fun onConnected() {
@@ -484,7 +545,8 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                     Log.d(TAG, "onServerEventConversationItemInputAudioTranscriptionCompleted($realtimeServerEventConversationItemInputAudioTranscriptionCompleted)")
                 }
                 val id = realtimeServerEventConversationItemInputAudioTranscriptionCompleted.itemId
-                val transcript = realtimeServerEventConversationItemInputAudioTranscriptionCompleted.transcript.trim() // DO TRIM!
+                val transcript =
+                    realtimeServerEventConversationItemInputAudioTranscriptionCompleted.transcript.trim() // DO TRIM!
                 if (debugLogConversation) {
                     Log.w(TAG, "onServerEventConversationItemInputAudioTranscriptionCompleted: conversationItems.add(ConversationItem(id=${quote(id)}, initialText=${quote(transcript)}")
                 }
@@ -521,7 +583,12 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                 Log.d(TAG, "onServerEventError($realtimeServerEventError)")
                 val error = realtimeServerEventError.error
                 val text = error.message
-                showToast(context = context, text = text, duration = Toast.LENGTH_LONG, forceInvokeOnMain = true)
+                showToast(
+                    context = context,
+                    text = text,
+                    duration = Toast.LENGTH_LONG,
+                    forceInvokeOnMain = true,
+                )
             }
 
             override fun onServerEventInputAudioBufferCleared(
@@ -551,7 +618,12 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
             override fun onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped: ServerEventOutputAudioBufferAudioStopped) {
                 Log.d(TAG, "onServerEventOutputAudioBufferAudioStopped($realtimeServerEventOutputAudioBufferAudioStopped)")
                 isCancelingResponse = false
-                showToast(context = context, text = "Response canceled", duration = Toast.LENGTH_SHORT, forceInvokeOnMain = true)
+                showToast(
+                    context = context,
+                    text = "Response canceled",
+                    duration = Toast.LENGTH_SHORT,
+                    forceInvokeOnMain = true,
+                )
             }
 
             override fun onServerEventRateLimitsUpdated(
@@ -579,7 +651,8 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                     Log.d(TAG, "onServerEventResponseAudioTranscriptDelta($realtimeServerEventResponseAudioTranscriptDelta)")
                 }
                 val id = realtimeServerEventResponseAudioTranscriptDelta.itemId
-                val delta = realtimeServerEventResponseAudioTranscriptDelta.delta // DO **NOT** TRIM!
+                val delta =
+                    realtimeServerEventResponseAudioTranscriptDelta.delta // DO **NOT** TRIM!
 
                 // Append this delta to any current in progress conversation,
                 // or create a new conversation
@@ -588,7 +661,11 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                     Log.w(TAG, "onServerEventResponseAudioTranscriptDelta: id=$id, delta=$delta, index=$index")
                 }
                 if (index == -1) {
-                    val conversationItem = ConversationItem(id=id, speaker = ConversationSpeaker.Remote, initialText = delta)
+                    val conversationItem = ConversationItem(
+                        id = id,
+                        speaker = ConversationSpeaker.Remote,
+                        initialText = delta,
+                    )
                     if (debugLogConversation) {
                         Log.w(TAG, "conversationItems.add($conversationItem)")
                     }
@@ -762,11 +839,16 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                 onCheckedChange = { newValue ->
                                     if (newValue) {
                                         // Re-check here to handle case of coming back from Settings app
-                                        hasAllRequiredPermissions = checkSelfPermission(context, RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                                        hasAllRequiredPermissions = requiredPermissions.all {
+                                            checkSelfPermission(
+                                                context,
+                                                it
+                                            ) == PackageManager.PERMISSION_GRANTED
+                                        }
                                         if (hasAllRequiredPermissions) {
                                             connect()
                                         } else {
-                                            requestPermissionLauncher.launch(RECORD_AUDIO)
+                                            requestPermissionsLauncher.launch(requiredPermissions.toTypedArray())
                                         }
                                     } else {
                                         disconnect(isManual = true)
@@ -818,7 +900,7 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                         if (hasAllRequiredPermissions) {
                             connectIfAutoConnectAndNotManualOff()
                         } else {
-                            requestPermissionLauncher.launch(RECORD_AUDIO)
+                            requestPermissionsLauncher.launch(requiredPermissions.toTypedArray())
                         }
                     }
 
@@ -853,7 +935,11 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                             Row {
                                 LazyColumn(
                                     modifier = Modifier
-                                        .border(1.dp, Color.LightGray, shape = RoundedCornerShape(8.dp))
+                                        .border(
+                                            1.dp,
+                                            Color.LightGray,
+                                            shape = RoundedCornerShape(8.dp)
+                                        )
                                         .fillMaxSize(),
                                     contentPadding = PaddingValues(8.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -866,7 +952,8 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                         val paddingAmount = 60.dp
                                         val modifier: Modifier
                                         val textAlign: TextAlign
-                                        val inputAudioTranscription = mobileViewModel?.inputAudioTranscription?.collectAsState()?.value
+                                        val inputAudioTranscription =
+                                            mobileViewModel?.inputAudioTranscription?.collectAsState()?.value
                                         if (inputAudioTranscription != null) {
                                             when (item.speaker) {
                                                 ConversationSpeaker.Local -> {
@@ -887,15 +974,17 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                         }
                                         Row(
                                             modifier = Modifier
-                                                .then(modifier)
-                                            ,
+                                                .then(modifier),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Row(
                                                 modifier = Modifier
-                                                    .border(1.dp, Color.Gray, shape = RoundedCornerShape(8.dp))
-                                                    .padding(8.dp)
-                                                ,
+                                                    .border(
+                                                        1.dp,
+                                                        Color.Gray,
+                                                        shape = RoundedCornerShape(8.dp)
+                                                    )
+                                                    .padding(8.dp),
                                             ) {
                                                 SelectionContainer {
                                                     Text(
@@ -903,7 +992,7 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                                             .fillMaxWidth(),
                                                         text = item.text,
                                                         textAlign = textAlign,
-                                                        )
+                                                    )
                                                 }
                                             }
                                         }
@@ -922,7 +1011,7 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                     //
                     Row(
                         modifier = Modifier
-                            .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp)
+                            .padding(horizontal = 24.dp, vertical = 16.dp)
                     ) {
                         //
                         //region Reset
@@ -933,15 +1022,18 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                     4.dp,
                                     if (isConnected) MaterialTheme.colorScheme.primary else disabledColor,
                                     shape = CircleShape
-                                )
-                            ,
+                                ),
                         ) {
                             IconButton(
                                 enabled = isConnected && !isCancelingResponse,
                                 onClick = {
                                     disconnect()
                                     connect()
-                                    showToast(context = context, text = "Reconnecting", forceInvokeOnMain = true)
+                                    showToast(
+                                        context = context,
+                                        text = "Reconnecting",
+                                        forceInvokeOnMain = true,
+                                    )
                                 },
                                 modifier = Modifier
                                     .size(66.dp)
@@ -969,8 +1061,7 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                         //
                         Box(
                             modifier = Modifier
-                                .size(150.dp)
-                            ,
+                                .size(150.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             if (isConnected) {
@@ -986,6 +1077,7 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                             modifier = Modifier.size(150.dp)
                                         )
                                     }
+
                                     isConnectingOrConnected -> {
                                         CircularProgressIndicator(
                                             color = MaterialTheme.colorScheme.primary,
@@ -993,6 +1085,7 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                             modifier = Modifier.size(150.dp)
                                         )
                                     }
+
                                     else -> {
                                         CircularProgressIndicator(
                                             progress = { 0f },
@@ -1030,15 +1123,15 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                     4.dp,
                                     if (isConnected) MaterialTheme.colorScheme.primary else disabledColor,
                                     shape = CircleShape
-                                )
-                            ,
+                                ),
                         ) {
                             IconButton(
                                 enabled = isConnected && !isCancelingResponse,
                                 onClick = {
                                     mobileViewModel?.realtimeClient?.also { realtimeClient ->
                                         // If true, will be set back to false in onServerEventOutputAudioBufferAudioStopped
-                                        isCancelingResponse = realtimeClient.dataSendResponseCancel()
+                                        isCancelingResponse =
+                                            realtimeClient.dataSendResponseCancel()
                                         /*
                                         It takes a REALLY long time for `output_audio_buffer.audio_stopped` to be received.
                                         I have seen it take up to 20 seconds (proportional to the amount of speech in response)
@@ -1059,7 +1152,11 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
 2025-01-22 16:38:51.976 17703-17785 RealtimeClient          com.swooby.alfredai                  W  onDataChannelText: unknown type=output_audio_buffer.audio_stopped
                                          */
                                         if (isCancelingResponse) {
-                                            showToast(context = context, text = "Cancelling Response; this can take a long time to complete.", duration = Toast.LENGTH_LONG)
+                                            showToast(
+                                                context = context,
+                                                text = "Cancelling Response; this can take a long time to complete.",
+                                                duration = Toast.LENGTH_LONG,
+                                            )
                                         }
                                     }
                                 },
@@ -1078,6 +1175,44 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                         //
                         //endregion
                         //
+                    }
+
+                    val audioDevices = mobileViewModel?.audioDevices
+                    val selectedAudioDevice = mobileViewModel?.selectedAudioDevice
+                    if (audioDevices?.isEmpty() == false && selectedAudioDevice != null) {
+                        var expanded by remember { mutableStateOf(false) }
+                        ExposedDropdownMenuBox(
+                            expanded = expanded,
+                            onExpandedChange = { expanded = !expanded }
+                        ) {
+                            TextField(
+                                readOnly = true,
+                                value = selectedAudioDevice.name,
+                                onValueChange = { /* read-only; ignore */ },
+                                label = { Text("Audio Device") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .menuAnchor(
+                                        type = MenuAnchorType.PrimaryNotEditable,
+                                        enabled = true
+                                    )
+                            )
+                            ExposedDropdownMenu(
+                                expanded = expanded,
+                                onDismissRequest = { expanded = false }
+                            ) {
+                                audioDevices.forEach { audioDevice ->
+                                    DropdownMenuItem(
+                                        text = { Text(audioDevice.name) },
+                                        onClick = {
+                                            mobileViewModel.selectAudioDevice(audioDevice)
+                                            expanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }

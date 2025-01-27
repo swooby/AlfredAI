@@ -2,6 +2,9 @@ package com.swooby.alfredai
 
 import android.app.Application
 import android.util.Log
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.openai.models.RealtimeServerEventConversationCreated
 import com.openai.models.RealtimeServerEventConversationItemCreated
 import com.openai.models.RealtimeServerEventConversationItemDeleted
@@ -39,6 +42,8 @@ import com.swooby.alfredai.Utils.playAudioResourceOnce
 import com.swooby.alfredai.openai.realtime.RealtimeClient
 import com.swooby.alfredai.openai.realtime.RealtimeClient.RealtimeClientListener
 import com.swooby.alfredai.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
+import com.twilio.audioswitch.AudioDevice
+import com.twilio.audioswitch.AudioSwitch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -60,6 +65,20 @@ class MobileViewModel(application: Application) :
         get() = "MOBILE"
     override val remoteCapabilityName: String
         get() = "verify_remote_alfredai_wear_app"
+
+    override fun init() {
+        super.init()
+        audioSwitchStart()
+    }
+
+    override fun close() {
+        super.close()
+        audioSwitchStop()
+    }
+
+    //
+    //region Preferences
+    //
 
     private val prefs = PushToTalkPreferences(application)
 
@@ -193,6 +212,10 @@ class MobileViewModel(application: Application) :
 
     val isConfigured: Boolean
         get() = apiKey.value.isNotBlank()
+
+    //
+    //endregion
+    //
 
     private var _realtimeClient: RealtimeClient? = null
     val realtimeClient: RealtimeClient?
@@ -344,12 +367,14 @@ class MobileViewModel(application: Application) :
         }
 
         override fun onConnected() {
+            audioSwitch.activate()
             listeners.forEach {
                 it.onConnected()
             }
         }
 
         override fun onDisconnected() {
+            audioSwitch.deactivate()
             listeners.forEach {
                 it.onDisconnected()
             }
@@ -572,6 +597,49 @@ class MobileViewModel(application: Application) :
 
     fun removeListener(listener: RealtimeClientListener) {
         listeners.remove(listener)
+    }
+
+    //
+    //endregion
+    //
+
+    //
+    //region AudioSwitch
+    //
+
+    var audioDevices by mutableStateOf<List<AudioDevice>>(emptyList())
+        private set
+
+    var selectedAudioDevice by mutableStateOf<AudioDevice?>(null)
+        private set
+
+    fun selectAudioDevice(device: AudioDevice) {
+        // AudioSwitch will also update our callback with the new "selectedDevice"
+        // so we typically *don't* set 'selectedAudioDevice' manually here.
+        audioSwitch.selectDevice(device)
+    }
+
+    private val audioSwitch = AudioSwitch(
+        context = application,
+        preferredDeviceList = listOf(
+            AudioDevice.BluetoothHeadset::class.java,
+            AudioDevice.WiredHeadset::class.java,
+            AudioDevice.Speakerphone::class.java,
+            AudioDevice.Earpiece::class.java
+        )
+    )
+
+    fun audioSwitchStart() {
+        audioSwitchStop()
+        audioSwitch.start { audioDevices, selectedAudioDevice ->
+            Log.d(TAG, "audioSwitchStart: audioDevices=$audioDevices, selectedAudioDevice=$selectedAudioDevice")
+            this.audioDevices = audioDevices
+            this.selectedAudioDevice = selectedAudioDevice
+        }
+    }
+
+    private fun audioSwitchStop() {
+        audioSwitch.stop()
     }
 
     //

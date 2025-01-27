@@ -68,6 +68,8 @@ import org.webrtc.RtpReceiver
 import org.webrtc.RtpSender
 import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
+import org.webrtc.audio.AudioDeviceModule
+import org.webrtc.audio.JavaAudioDeviceModule
 import java.net.UnknownHostException
 import java.nio.ByteBuffer
 
@@ -211,6 +213,11 @@ class RealtimeClient(private val applicationContext: Context,
         // clear it after requestOpenAiRealtimeSdp (success or fail)
         ApiClient.accessToken = ephemeralApiKey
 
+        val adm: AudioDeviceModule = JavaAudioDeviceModule.builder(applicationContext)
+            .setUseHardwareAcousticEchoCanceler(true)
+            .setUseHardwareNoiseSuppressor(true)
+            .createAudioDeviceModule()
+
         PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions
             .builder(applicationContext)
             .also { builder ->
@@ -227,6 +234,7 @@ class RealtimeClient(private val applicationContext: Context,
         val peerConnectionFactory = PeerConnectionFactory
             .builder()
             .setOptions(PeerConnectionFactory.Options())
+            .setAudioDeviceModule(adm)
             .createPeerConnectionFactory()
         // ICE/STUN is not needed to talk to *server* (only needed for peer-to-peer)
         val iceServers = listOf<PeerConnection.IceServer>()
@@ -305,7 +313,7 @@ class RealtimeClient(private val applicationContext: Context,
         //  Closest thing I can find is to enable session input_audio_transcription,
         //  but that costs more money! :/
         setLocalAudioMicrophone(peerConnectionFactory)
-        setLocalAudioSpeaker(applicationContext)
+        //setLocalAudioSpeaker(applicationContext)
         //
         //endregion
         //

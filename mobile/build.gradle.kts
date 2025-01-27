@@ -88,4 +88,6 @@ dependencies {
     implementation(libs.jsoup)
 
     implementation(project(":shared"))
+
+    implementation(libs.audioswitch)
 }

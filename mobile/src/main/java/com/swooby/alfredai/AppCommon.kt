@@ -9,12 +9,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 object AppCommon {
+    /*
     fun getPermissionText(context: Context, granted: Boolean): String {
         return if (granted)
             context.getString(R.string.microphone_permission_granted)
         else
             context.getString(R.string.microphone_permission_not_granted)
     }
+    */
 
     public val SmallButtonSize = 42.dp
     public val DefaultButtonSize = 56.dp
