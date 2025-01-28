@@ -136,10 +136,10 @@ class MobileActivity : ComponentActivity() {
         private const val TAG = "PushToTalkActivity"
     }
 
-    private val mobileViewModel: MobileViewModel by appViewModels()
+    private val mobileViewModel by lazy { (application as AlfredAiApp).mobileViewModel }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        Log.d(TAG, "onCreate()")
+        Log.d(TAG, "onCreate(savedInstanceState=$savedInstanceState)")
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
@@ -147,18 +147,15 @@ class MobileActivity : ComponentActivity() {
         }
     }
 
-    override fun onDestroy() {
-        Log.d(TAG, "onDestroy()")
-        super.onDestroy()
-
-        // Temporary, until Background/Foreground Service is implemented
-        mobileViewModel.realtimeClient?.disconnect()
+    override fun onStart() {
+        super.onStart()
+        mobileViewModel.onStartOrResume(this)
     }
-}
 
-enum class ConversationSpeaker {
-    Local,
-    Remote,
+    override fun onStop() {
+        super.onStop()
+        mobileViewModel.onPauseOrStop(this)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -187,12 +184,6 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
 
     @Suppress(
         "SimplifyBooleanWithConstants",
-        //"KotlinConstantConditions",
-    )
-    val debugLogConversation = BuildConfig.DEBUG && true
-
-    @Suppress(
-        "SimplifyBooleanWithConstants",
         "KotlinConstantConditions",
     )
     val debugToastVerbose = BuildConfig.DEBUG && false
@@ -201,37 +192,35 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
     //region Conversation
     //
 
-    data class ConversationItem(
-        val id: String?,
-        val speaker: ConversationSpeaker,
-        val initialText: String
-    ) {
-        var text by mutableStateOf(initialText)
-    }
+    fun mockConversationItems(): List<MobileViewModel.ConversationItem> {
+        val conversationItems = mutableListOf<MobileViewModel.ConversationItem>()
+        @Suppress(
+            "SimplifyBooleanWithConstants",
+            "KotlinConstantConditions",
+        )
+        if (BuildConfig.DEBUG && false) {
+            fun generateRandomSentence(): String {
+                val subjects = listOf("The cat", "The dog", "The bird", "The fish")
+                val verbs = listOf("jumps", "runs", "flies", "swims")
+                val objects = listOf("over the fence", "in the park", "through the air", "in the water")
+                return "${subjects.random()} ${verbs.random()} ${objects.random()}."
+            }
 
-    val conversationItems = remember { mutableStateListOf<ConversationItem>() }
-    @Suppress(
-        "SimplifyBooleanWithConstants",
-        "KotlinConstantConditions",
-    )
-    if (BuildConfig.DEBUG && false) {
-        fun generateRandomSentence(): String {
-            val subjects = listOf("The cat", "The dog", "The bird", "The fish")
-            val verbs = listOf("jumps", "runs", "flies", "swims")
-            val objects = listOf("over the fence", "in the park", "through the air", "in the water")
-            return "${subjects.random()} ${verbs.random()} ${objects.random()}."
-        }
-
-        for (i in 0..20) {
-            conversationItems.add(
-                ConversationItem(
-                    id = "$i",
-                    speaker = ConversationSpeaker.entries.random(),
-                    initialText = generateRandomSentence()
+            for (i in 0..20) {
+                conversationItems.add(
+                    MobileViewModel.ConversationItem(
+                        id = "$i",
+                        speaker = MobileViewModel.ConversationSpeaker.entries.random(),
+                        initialText = generateRandomSentence()
+                    )
                 )
-            )
+            }
         }
+        return conversationItems
     }
+
+    val conversationItems = mobileViewModel?.conversationItems ?: mockConversationItems()
+
     val conversationListState = rememberLazyListState()
     LaunchedEffect(Unit) {
         snapshotFlow { conversationItems.lastOrNull()?.text }
@@ -281,7 +270,7 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                 isConnectSwitchOn = true
                 if (!isConnectingOrConnected) {
                     isConnectingOrConnected = true
-                    conversationItems.clear()
+                    mobileViewModel.conversationItemsClear()
                     jobConnect = CoroutineScope(Dispatchers.IO).launch {
                         if (debugConnectDelayMillis > 0) {
                             delay(debugConnectDelayMillis)
@@ -350,6 +339,10 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
             Manifest.permission.BLUETOOTH,
             Manifest.permission.BLUETOOTH_CONNECT,
             Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.FOREGROUND_SERVICE,
+            //Manifest.permission.FOREGROUND_SERVICE_MICROPHONE,
+            //Manifest.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING,
+            Manifest.permission.FOREGROUND_SERVICE_SPECIAL_USE,
         )
     }
 
@@ -522,88 +515,25 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                 return false
             }
 
-            override fun onServerEventConversationCreated(
-                realtimeServerEventConversationCreated: RealtimeServerEventConversationCreated
-            ) {
-                if (debugLogConversation) {
-                    Log.d(TAG, "onServerEventConversationCreated($realtimeServerEventConversationCreated)")
-                }
+            override fun onServerEventConversationCreated(realtimeServerEventConversationCreated: RealtimeServerEventConversationCreated) {
             }
 
-            override fun onServerEventConversationItemCreated(
-                realtimeServerEventConversationItemCreated: RealtimeServerEventConversationItemCreated
-            ) {
-                if (debugLogConversation) {
-                    Log.d(TAG, "onServerEventConversationItemCreated($realtimeServerEventConversationItemCreated)")
-                }
-                val item = realtimeServerEventConversationItemCreated.item
-                val id = item.id
-                val content = item.content
-                val text = content?.joinToString(separator = "") { it.text ?: "" } ?: ""
-                if (text.isNotBlank()) {
-                    if (debugLogConversation) {
-                        Log.w(TAG, "onServerEventConversationItemCreated: conversationItems.add(ConversationItem(id=${quote(id)}, initialText=${quote(text)}")
-                    }
-                    conversationItems.add(
-                        ConversationItem(
-                            id = id,
-                            speaker = ConversationSpeaker.Local,
-                            initialText = text
-                        )
-                    )
-                }
+            override fun onServerEventConversationItemCreated(realtimeServerEventConversationItemCreated: RealtimeServerEventConversationItemCreated) {
             }
 
-            override fun onServerEventConversationItemDeleted(
-                realtimeServerEventConversationItemDeleted: RealtimeServerEventConversationItemDeleted
-            ) {
-                if (debugLogConversation) {
-                    Log.d(TAG, "onServerEventConversationItemDeleted($realtimeServerEventConversationItemDeleted)")
-                }
+            override fun onServerEventConversationItemDeleted(realtimeServerEventConversationItemDeleted: RealtimeServerEventConversationItemDeleted) {
             }
 
-            override fun onServerEventConversationItemInputAudioTranscriptionCompleted(
-                realtimeServerEventConversationItemInputAudioTranscriptionCompleted: RealtimeServerEventConversationItemInputAudioTranscriptionCompleted
-            ) {
-                if (debugLogConversation) {
-                    Log.d(TAG, "onServerEventConversationItemInputAudioTranscriptionCompleted($realtimeServerEventConversationItemInputAudioTranscriptionCompleted)")
-                }
-                val id = realtimeServerEventConversationItemInputAudioTranscriptionCompleted.itemId
-                val transcript =
-                    realtimeServerEventConversationItemInputAudioTranscriptionCompleted.transcript.trim() // DO TRIM!
-                if (transcript.isNotBlank()) {
-                    if (debugLogConversation) {
-                        Log.w(TAG, "onServerEventConversationItemInputAudioTranscriptionCompleted: conversationItems.add(ConversationItem(id=${quote(id)}, initialText=${quote(transcript)}")
-                    }
-                    conversationItems.add(
-                        ConversationItem(
-                            id = id,
-                            speaker = ConversationSpeaker.Local,
-                            initialText = transcript
-                        )
-                    )
-                }
+            override fun onServerEventConversationItemInputAudioTranscriptionCompleted(realtimeServerEventConversationItemInputAudioTranscriptionCompleted: RealtimeServerEventConversationItemInputAudioTranscriptionCompleted) {
             }
 
-            override fun onServerEventConversationItemInputAudioTranscriptionFailed(
-                realtimeServerEventConversationItemInputAudioTranscriptionFailed: RealtimeServerEventConversationItemInputAudioTranscriptionFailed
-            ) {
-                if (debugLogConversation) {
-                    Log.d(TAG, "onServerEventConversationItemInputAudioTranscriptionFailed($realtimeServerEventConversationItemInputAudioTranscriptionFailed)")
-                }
+            override fun onServerEventConversationItemInputAudioTranscriptionFailed(realtimeServerEventConversationItemInputAudioTranscriptionFailed: RealtimeServerEventConversationItemInputAudioTranscriptionFailed) {
             }
 
-            override fun onServerEventConversationItemTruncated(
-                realtimeServerEventConversationItemTruncated: RealtimeServerEventConversationItemTruncated
-            ) {
-                if (debugLogConversation) {
-                    Log.d(TAG, "onServerEventConversationItemTruncated($realtimeServerEventConversationItemTruncated)")
-                }
+            override fun onServerEventConversationItemTruncated(realtimeServerEventConversationItemTruncated: RealtimeServerEventConversationItemTruncated) {
             }
 
-            override fun onServerEventError(
-                realtimeServerEventError: RealtimeServerEventError
-            ) {
+            override fun onServerEventError(realtimeServerEventError: RealtimeServerEventError) {
                 Log.d(TAG, "onServerEventError($realtimeServerEventError)")
                 val error = realtimeServerEventError.error
                 val text = error.message
@@ -615,27 +545,19 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                 )
             }
 
-            override fun onServerEventInputAudioBufferCleared(
-                realtimeServerEventInputAudioBufferCleared: RealtimeServerEventInputAudioBufferCleared
-            ) {
+            override fun onServerEventInputAudioBufferCleared(realtimeServerEventInputAudioBufferCleared: RealtimeServerEventInputAudioBufferCleared) {
                 Log.d(TAG, "onServerEventInputAudioBufferCleared($realtimeServerEventInputAudioBufferCleared)")
             }
 
-            override fun onServerEventInputAudioBufferCommitted(
-                realtimeServerEventInputAudioBufferCommitted: RealtimeServerEventInputAudioBufferCommitted
-            ) {
+            override fun onServerEventInputAudioBufferCommitted(realtimeServerEventInputAudioBufferCommitted: RealtimeServerEventInputAudioBufferCommitted) {
                 Log.d(TAG, "onServerEventInputAudioBufferCommitted($realtimeServerEventInputAudioBufferCommitted)")
             }
 
-            override fun onServerEventInputAudioBufferSpeechStarted(
-                realtimeServerEventInputAudioBufferSpeechStarted: RealtimeServerEventInputAudioBufferSpeechStarted
-            ) {
+            override fun onServerEventInputAudioBufferSpeechStarted(realtimeServerEventInputAudioBufferSpeechStarted: RealtimeServerEventInputAudioBufferSpeechStarted) {
                 Log.d(TAG, "onServerEventInputAudioBufferSpeechStarted($realtimeServerEventInputAudioBufferSpeechStarted)")
             }
 
-            override fun onServerEventInputAudioBufferSpeechStopped(
-                realtimeServerEventInputAudioBufferSpeechStopped: RealtimeServerEventInputAudioBufferSpeechStopped
-            ) {
+            override fun onServerEventInputAudioBufferSpeechStopped(realtimeServerEventInputAudioBufferSpeechStopped: RealtimeServerEventInputAudioBufferSpeechStopped) {
                 Log.d(TAG, "onServerEventInputAudioBufferSpeechStopped($realtimeServerEventInputAudioBufferSpeechStopped)")
             }
 
@@ -652,166 +574,68 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                 }
             }
 
-            override fun onServerEventRateLimitsUpdated(
-                realtimeServerEventRateLimitsUpdated: RealtimeServerEventRateLimitsUpdated
-            ) {
+            override fun onServerEventRateLimitsUpdated(realtimeServerEventRateLimitsUpdated: RealtimeServerEventRateLimitsUpdated) {
                 Log.d(TAG, "onServerEventRateLimitsUpdated($realtimeServerEventRateLimitsUpdated)")
             }
 
-            override fun onServerEventResponseAudioDelta(
-                realtimeServerEventResponseAudioDelta: RealtimeServerEventResponseAudioDelta
-            ) {
+            override fun onServerEventResponseAudioDelta(realtimeServerEventResponseAudioDelta: RealtimeServerEventResponseAudioDelta) {
                 Log.d(TAG, "onServerEventResponseAudioDelta($realtimeServerEventResponseAudioDelta)")
             }
 
-            override fun onServerEventResponseAudioDone(
-                realtimeServerEventResponseAudioDone: RealtimeServerEventResponseAudioDone
-            ) {
+            override fun onServerEventResponseAudioDone(realtimeServerEventResponseAudioDone: RealtimeServerEventResponseAudioDone) {
                 Log.d(TAG, "onServerEventResponseAudioDone($realtimeServerEventResponseAudioDone)")
             }
 
-            override fun onServerEventResponseAudioTranscriptDelta(
-                realtimeServerEventResponseAudioTranscriptDelta: RealtimeServerEventResponseAudioTranscriptDelta
-            ) {
-                if (debugLogConversation) {
-                    Log.d(TAG, "onServerEventResponseAudioTranscriptDelta($realtimeServerEventResponseAudioTranscriptDelta)")
-                }
-                val id = realtimeServerEventResponseAudioTranscriptDelta.itemId
-                val delta =
-                    realtimeServerEventResponseAudioTranscriptDelta.delta // DO **NOT** TRIM!
-
-                // Append this delta to any current in progress conversation,
-                // or create a new conversation
-                val index = conversationItems.indexOfFirst { it.id == id }
-                if (debugLogConversation) {
-                    Log.w(TAG, "onServerEventResponseAudioTranscriptDelta: id=$id, delta=$delta, index=$index")
-                }
-                if (index == -1) {
-                    val conversationItem = ConversationItem(
-                        id = id,
-                        speaker = ConversationSpeaker.Remote,
-                        initialText = delta,
-                    )
-                    if (debugLogConversation) {
-                        Log.w(TAG, "conversationItems.add($conversationItem)")
-                    }
-                    conversationItems.add(conversationItem)
-                } else {
-                    val conversationItem = conversationItems[index]
-                    conversationItem.text += delta
-                    if (debugLogConversation) {
-                        Log.w(TAG, "conversationItems.set($index, $conversationItem)")
-                    }
-                    conversationItems[index] = conversationItem
-                }
+            override fun onServerEventResponseAudioTranscriptDelta(realtimeServerEventResponseAudioTranscriptDelta: RealtimeServerEventResponseAudioTranscriptDelta) {
             }
 
-            override fun onServerEventResponseAudioTranscriptDone(
-                realtimeServerEventResponseAudioTranscriptDone: RealtimeServerEventResponseAudioTranscriptDone
-            ) {
-                if (debugLogConversation) {
-                    Log.d(TAG, "onServerEventResponseAudioTranscriptDone($realtimeServerEventResponseAudioTranscriptDone)")
-                }
+            override fun onServerEventResponseAudioTranscriptDone(realtimeServerEventResponseAudioTranscriptDone: RealtimeServerEventResponseAudioTranscriptDone) {
             }
 
-            override fun onServerEventResponseContentPartAdded(
-                realtimeServerEventResponseContentPartAdded: RealtimeServerEventResponseContentPartAdded
-            ) {
-                if (debugLogConversation) {
-                    Log.d(TAG, "onServerEventResponseContentPartAdded($realtimeServerEventResponseContentPartAdded)")
-                }
+            override fun onServerEventResponseContentPartAdded(realtimeServerEventResponseContentPartAdded: RealtimeServerEventResponseContentPartAdded) {
             }
 
-            override fun onServerEventResponseContentPartDone(
-                realtimeServerEventResponseContentPartDone: RealtimeServerEventResponseContentPartDone
-            ) {
-                if (debugLogConversation) {
-                    Log.d(TAG, "onServerEventResponseContentPartDone($realtimeServerEventResponseContentPartDone)")
-                }
+            override fun onServerEventResponseContentPartDone(realtimeServerEventResponseContentPartDone: RealtimeServerEventResponseContentPartDone) {
             }
 
-            override fun onServerEventResponseCreated(
-                realtimeServerEventResponseCreated: RealtimeServerEventResponseCreated
-            ) {
-                if (debugLogConversation) {
-                    Log.d(TAG, "onServerEventResponseCreated($realtimeServerEventResponseCreated)")
-                }
+            override fun onServerEventResponseCreated(realtimeServerEventResponseCreated: RealtimeServerEventResponseCreated) {
             }
 
-            override fun onServerEventResponseDone(
-                realtimeServerEventResponseDone: RealtimeServerEventResponseDone
-            ) {
-                if (debugLogConversation) {
-                    Log.d(TAG, "onServerEventResponseDone($realtimeServerEventResponseDone)")
-                }
-                realtimeServerEventResponseDone.response.output?.forEach { outputConversationItem ->
-                    if (debugLogConversation) {
-                        Log.w(TAG, "onServerEventResponseDone: outputConversationItem=$outputConversationItem")
-                    }
-                    val id = outputConversationItem.id ?: return@forEach
-                    val index = conversationItems.indexOfFirst { it.id == id }
-                    if (index != -1) {
-                        val conversationItem = conversationItems[index]
-                        if (debugLogConversation) {
-                            Log.w(TAG, "onServerEventResponseDone: removing $conversationItem at index=$index")
-                        }
-                        conversationItems.removeAt(index)
-                        if (debugLogConversation) {
-                            Log.w(TAG, "onServerEventResponseDone: adding $conversationItem at end")
-                        }
-                        conversationItems.add(conversationItem)
-                    }
-                }
+            override fun onServerEventResponseDone(realtimeServerEventResponseDone: RealtimeServerEventResponseDone) {
             }
 
-            override fun onServerEventResponseFunctionCallArgumentsDelta(
-                realtimeServerEventResponseFunctionCallArgumentsDelta: RealtimeServerEventResponseFunctionCallArgumentsDelta
-            ) {
+            override fun onServerEventResponseFunctionCallArgumentsDelta(realtimeServerEventResponseFunctionCallArgumentsDelta: RealtimeServerEventResponseFunctionCallArgumentsDelta) {
                 Log.d(TAG, "onServerEventResponseFunctionCallArgumentsDelta($realtimeServerEventResponseFunctionCallArgumentsDelta)")
             }
 
-            override fun onServerEventResponseFunctionCallArgumentsDone(
-                realtimeServerEventResponseFunctionCallArgumentsDone: RealtimeServerEventResponseFunctionCallArgumentsDone
-            ) {
+            override fun onServerEventResponseFunctionCallArgumentsDone(realtimeServerEventResponseFunctionCallArgumentsDone: RealtimeServerEventResponseFunctionCallArgumentsDone) {
                 Log.d(TAG, "onServerEventResponseFunctionCallArgumentsDone($realtimeServerEventResponseFunctionCallArgumentsDone)")
             }
 
-            override fun onServerEventResponseOutputItemAdded(
-                realtimeServerEventResponseOutputItemAdded: RealtimeServerEventResponseOutputItemAdded
-            ) {
+            override fun onServerEventResponseOutputItemAdded(realtimeServerEventResponseOutputItemAdded: RealtimeServerEventResponseOutputItemAdded) {
                 Log.d(TAG, "onServerEventResponseOutputItemAdded($realtimeServerEventResponseOutputItemAdded)")
             }
 
-            override fun onServerEventResponseOutputItemDone(
-                realtimeServerEventResponseOutputItemDone: RealtimeServerEventResponseOutputItemDone
-            ) {
+            override fun onServerEventResponseOutputItemDone(realtimeServerEventResponseOutputItemDone: RealtimeServerEventResponseOutputItemDone) {
                 Log.d(TAG, "onServerEventResponseOutputItemDone($realtimeServerEventResponseOutputItemDone)")
             }
 
-            override fun onServerEventResponseTextDelta(
-                realtimeServerEventResponseTextDelta: RealtimeServerEventResponseTextDelta
-            ) {
+            override fun onServerEventResponseTextDelta(realtimeServerEventResponseTextDelta: RealtimeServerEventResponseTextDelta) {
                 Log.d(TAG, "onServerEventResponseTextDelta($realtimeServerEventResponseTextDelta)")
             }
 
-            override fun onServerEventResponseTextDone(
-                realtimeServerEventResponseTextDone: RealtimeServerEventResponseTextDone
-            ) {
+            override fun onServerEventResponseTextDone(realtimeServerEventResponseTextDone: RealtimeServerEventResponseTextDone) {
                 Log.d(TAG, "onServerEventResponseTextDone($realtimeServerEventResponseTextDone)")
             }
 
-            override fun onServerEventSessionCreated(
-                realtimeServerEventSessionCreated: RealtimeServerEventSessionCreated
-            ) {
+            override fun onServerEventSessionCreated(realtimeServerEventSessionCreated: RealtimeServerEventSessionCreated) {
                 Log.d(TAG, "onServerEventSessionCreated($realtimeServerEventSessionCreated)")
                 if (debugToastVerbose) {
                     showToast(context = context, text = "Session Created", forceInvokeOnMain = true)
                 }
             }
 
-            override fun onServerEventSessionUpdated(
-                realtimeServerEventSessionUpdated: RealtimeServerEventSessionUpdated
-            ) {
+            override fun onServerEventSessionUpdated(realtimeServerEventSessionUpdated: RealtimeServerEventSessionUpdated) {
                 Log.d(TAG, "onServerEventSessionUpdated($realtimeServerEventSessionUpdated)")
                 if (debugToastVerbose) {
                     showToast(context = context, text = "Session Updated", forceInvokeOnMain = true)
@@ -957,86 +781,106 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                     modifier = Modifier.padding(start = 4.dp),
                                     text = "Conversation:",
                                 )
-                                IconButton(onClick = { conversationItems.clear() }) {
+                                IconButton(onClick = { mobileViewModel?.conversationItemsClear() }) {
                                     Icon(
                                         painterResource(id = R.drawable.baseline_clear_all_24),
                                         contentDescription = "Clear All",
                                     )
                                 }
                             }
-                            LazyColumn(
-                                modifier = Modifier
-                                    .border(
-                                        1.dp,
-                                        Color.LightGray,
-                                        shape = RoundedCornerShape(8.dp)
+                            if (conversationItems.isEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .border(
+                                            1.dp,
+                                            Color.LightGray,
+                                            shape = RoundedCornerShape(8.dp)
+                                        )
+                                        .fillMaxWidth()
+                                        .weight(1f),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "No conversation items",
+                                        textAlign = TextAlign.Center,
                                     )
-                                    .fillMaxWidth()
-                                    .weight(1f),
-                                contentPadding = PaddingValues(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                state = conversationListState,
-                            ) {
-                                items(
-                                    count = conversationItems.size,
-                                ) { index ->
-                                    val item = conversationItems[index]
-                                    val avatarResId: Int
-                                    val horizontalAlignment: Arrangement.Horizontal
-                                    val contentAlignment: Alignment
-                                    val textAlign: TextAlign
-                                    when (item.speaker) {
-                                        ConversationSpeaker.Local -> {
-                                            avatarResId = R.drawable.baseline_person_24
-                                            horizontalAlignment = Arrangement.Start
-                                            contentAlignment = Alignment.CenterStart
-                                            textAlign = TextAlign.Start
-                                        }
-                                        ConversationSpeaker.Remote -> {
-                                            avatarResId = R.drawable.baseline_memory_24
-                                            horizontalAlignment = Arrangement.End
-                                            contentAlignment = Alignment.CenterEnd
-                                            textAlign = TextAlign.End
-                                        }
-                                    }
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = horizontalAlignment
-                                    ) {
-                                        if (item.speaker == ConversationSpeaker.Local) {
-                                            Icon(
-                                                painterResource(id = avatarResId),
-                                                contentDescription = "Local",
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .weight(1f),
-                                            contentAlignment = contentAlignment
-                                        ) {
-                                            SelectionContainer {
-                                                Text(
-                                                    modifier = Modifier
-                                                        .border(
-                                                            1.dp,
-                                                            Color.Gray,
-                                                            shape = RoundedCornerShape(8.dp)
-                                                        )
-                                                        .padding(8.dp),
-                                                    text = item.text,
-                                                    textAlign = textAlign,
-                                                )
+                                }
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier
+                                        .border(
+                                            1.dp,
+                                            Color.LightGray,
+                                            shape = RoundedCornerShape(8.dp)
+                                        )
+                                        .fillMaxWidth()
+                                        .weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    contentPadding = PaddingValues(8.dp),
+                                    state = conversationListState,
+                                ) {
+                                    items(
+                                        count = conversationItems.size,
+                                    ) { index ->
+                                        val item = conversationItems[index]
+                                        val avatarResId: Int
+                                        val horizontalAlignment: Arrangement.Horizontal
+                                        val contentAlignment: Alignment
+                                        val textAlign: TextAlign
+                                        when (item.speaker) {
+                                            MobileViewModel.ConversationSpeaker.Local -> {
+                                                avatarResId = R.drawable.baseline_person_24
+                                                horizontalAlignment = Arrangement.Start
+                                                contentAlignment = Alignment.CenterStart
+                                                textAlign = TextAlign.Start
+                                            }
+
+                                            MobileViewModel.ConversationSpeaker.Remote -> {
+                                                avatarResId = R.drawable.baseline_memory_24
+                                                horizontalAlignment = Arrangement.End
+                                                contentAlignment = Alignment.CenterEnd
+                                                textAlign = TextAlign.End
                                             }
                                         }
-                                        if (item.speaker == ConversationSpeaker.Remote) {
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Icon(
-                                                painterResource(id = avatarResId),
-                                                contentDescription = "Remote",
-                                            )
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = horizontalAlignment
+                                        ) {
+                                            if (item.speaker == MobileViewModel.ConversationSpeaker.Local) {
+                                                Icon(
+                                                    painterResource(id = avatarResId),
+                                                    contentDescription = "Local",
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                            }
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f),
+                                                contentAlignment = contentAlignment
+                                            ) {
+                                                SelectionContainer {
+                                                    Text(
+                                                        modifier = Modifier
+                                                            .border(
+                                                                1.dp,
+                                                                Color.Gray,
+                                                                shape = RoundedCornerShape(8.dp)
+                                                            )
+                                                            .padding(8.dp),
+                                                        text = item.text,
+                                                        textAlign = textAlign,
+                                                    )
+                                                }
+                                            }
+                                            if (item.speaker == MobileViewModel.ConversationSpeaker.Remote) {
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Icon(
+                                                    painterResource(id = avatarResId),
+                                                    contentDescription = "Remote",
+                                                )
+                                            }
                                         }
                                     }
                                 }

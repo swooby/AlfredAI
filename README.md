@@ -25,15 +25,15 @@ OpenAI Realtime API over WebRTC Push-To-Talk Android Phone[/Mobile] + Watch[/Wea
 
 ## TODOs
 (Not necessarily in any order)
-1. Background service (easy to do wrong; I want to get the UX right)
-2. Localize strings (I committed the sin of hard coding strings)
-3. Tests (another sin I committed)
-4. Get `Stop` working better
-5. **Standalone** `Wear` version (lower priority; requires adding tiles for settings, conversation, etc)
-6. Add `text` input/output feature
-7. Learn Tool/Function integration
-8. Find way to integrate with Gmail/Tasks/Keep/etc
-9. Find way to save conversations to https://chatgpt.com/ history
+1. Localize strings (I committed the sin of hard coding strings)
+2. Tests (another sin I committed)
+3. Get `Stop` working better
+4. **Standalone** `Wear` version (lower priority; requires adding tiles for settings, conversation, etc)
+5. Add `text` input/output feature
+6. Learn Tool/Function integration
+7. Find way to integrate with Gmail/Tasks/Keep/etc
+8. Find way to save conversations to https://chatgpt.com/ history
+9. Implement a `VoiceInteractionService`? https://developer.android.com/reference/android/service/voice/VoiceInteractionService
 
 ## Development
 * If Mobile or Wear physical device wireless debugging does not connect in Android Studio:  

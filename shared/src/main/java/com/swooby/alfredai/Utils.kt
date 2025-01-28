@@ -119,6 +119,13 @@ object Utils {
             android.Manifest.permission.BLUETOOTH_SCAN,
                 -> "Nearby devices"
 
+            android.Manifest.permission.POST_NOTIFICATIONS,
+            android.Manifest.permission.FOREGROUND_SERVICE,
+            //android.Manifest.permission.FOREGROUND_SERVICE_MICROPHONE,
+            //android.Manifest.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING,
+            android.Manifest.permission.FOREGROUND_SERVICE_SPECIAL_USE,
+                -> "Notifications"
+
             //...
 
             else

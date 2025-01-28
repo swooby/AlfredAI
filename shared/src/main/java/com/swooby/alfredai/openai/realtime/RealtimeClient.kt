@@ -1,8 +1,6 @@
 package com.swooby.alfredai.openai.realtime
 
 import android.content.Context
-import android.media.AudioDeviceInfo
-import android.media.AudioManager
 import com.openai.apis.RealtimeApi
 import com.openai.infrastructure.ApiClient
 import com.openai.infrastructure.ClientException
@@ -87,10 +85,18 @@ import java.nio.ByteBuffer
 class RealtimeClient(private val applicationContext: Context,
                      private val dangerousApiKey: String,
                      private var sessionConfig: RealtimeSessionCreateRequest,
-                     httpClient: OkHttpClient = httpLoggingClient,
+                     httpClient: OkHttpClient = ApiClient.defaultClient,
                      private val debug:Boolean = false) {
     companion object {
         private val log = RealtimeLog(RealtimeClient::class)
+
+        @Suppress(
+            "SimplifyBooleanWithConstants",
+            "KotlinConstantConditions",
+        )
+        private val debugInduceMysteriousUnknownHostException = BuildConfig.DEBUG && false
+
+        private const val MYSTERIOUS_UNKNOWN_HOST_EXCEPTION_MESSAGE = "Unable to resolve host \"api.openai.com\": No address associated with hostname"
 
         val httpLoggingClient = OkHttpClient.Builder()
                 .addInterceptor(HttpLoggingInterceptor().apply {
@@ -119,6 +125,8 @@ class RealtimeClient(private val applicationContext: Context,
                 _isConnectingOrConnected = value
                 if (value) {
                     notifyConnecting()
+                } else {
+                    notifyDisconnected()
                 }
             }
         }
@@ -191,11 +199,8 @@ class RealtimeClient(private val applicationContext: Context,
          * https://platform.openai.com/docs/api-reference/realtime-sessions/create
          */
         val realtimeSessionCreateResponse: RealtimeSessionCreateResponse? = try {
-            @Suppress("SimplifyBooleanWithConstants", "KotlinConstantConditions")
-            val debugInduceError = BuildConfig.DEBUG && false
-            @Suppress("KotlinConstantConditions")
-            if (debugInduceError) {
-                throw UnknownHostException("Unable to resolve host \"api.openai.com\": No address associated with hostname")
+            if (debugInduceMysteriousUnknownHostException) {
+                throw UnknownHostException(MYSTERIOUS_UNKNOWN_HOST_EXCEPTION_MESSAGE)
             }
             realtime.createRealtimeSession(sessionConfig)
         } catch (exception: Exception) {
@@ -307,19 +312,7 @@ class RealtimeClient(private val applicationContext: Context,
             }
         ) ?: throw IllegalStateException("Failed to create PeerConnection")
 
-        //
-        //region Audio
-        //
-        // TODO: abstract this out and allow routing of audio to different audio devices,
-        // especially bluetooth headset/earplugs/headphones
-        // TODO: For debugging purposes, is there a way to hear/echo the captured microphone audio?
-        //  Closest thing I can find is to enable session input_audio_transcription,
-        //  but that costs more money! :/
         setLocalAudioMicrophone(peerConnectionFactory)
-        //setLocalAudioSpeaker(applicationContext)
-        //
-        //endregion
-        //
 
         val dataChannelInit = DataChannel.Init()
         val logDc = RealtimeLog(DataChannel::class)
@@ -485,23 +478,10 @@ class RealtimeClient(private val applicationContext: Context,
         localAudioTrackMicrophoneSender = peerConnection?.addTrack(localAudioTrackMicrophone)
     }
 
-    private fun getSpeakerphone(audioManager: AudioManager): AudioDeviceInfo? {
-        val availableDevices = audioManager.availableCommunicationDevices
-        return availableDevices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-    }
-
-    private fun setLocalAudioSpeaker(context: Context) {
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-        getSpeakerphone(audioManager)?.also {
-            audioManager.setCommunicationDevice(it)
-        }
-    }
-
     /**
      * Essentially unmute or mute the speaker
      */
-    fun setLocalAudioTrackSpeakerEnabled(enabled: Boolean) {
+    private fun setLocalAudioTrackSpeakerEnabled(enabled: Boolean) {
         log.d("setLocalAudioTrackSpeakerEnabled($enabled)")
         remoteAudioTracks.forEach {
             it.setEnabled(enabled)

@@ -1,10 +1,23 @@
 package com.swooby.alfredai
 
+import android.app.Activity
 import android.app.Application
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
 import android.util.Log
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.app.NotificationCompat
+import androidx.lifecycle.viewModelScope
+import com.openai.infrastructure.ApiClient
+import com.openai.infrastructure.ClientError
+import com.openai.infrastructure.ClientException
 import com.openai.models.RealtimeServerEventConversationCreated
 import com.openai.models.RealtimeServerEventConversationItemCreated
 import com.openai.models.RealtimeServerEventConversationItemDeleted
@@ -12,6 +25,7 @@ import com.openai.models.RealtimeServerEventConversationItemInputAudioTranscript
 import com.openai.models.RealtimeServerEventConversationItemInputAudioTranscriptionFailed
 import com.openai.models.RealtimeServerEventConversationItemTruncated
 import com.openai.models.RealtimeServerEventError
+import com.openai.models.RealtimeServerEventErrorError
 import com.openai.models.RealtimeServerEventInputAudioBufferCleared
 import com.openai.models.RealtimeServerEventInputAudioBufferCommitted
 import com.openai.models.RealtimeServerEventInputAudioBufferSpeechStarted
@@ -39,6 +53,7 @@ import com.openai.models.RealtimeSessionModel
 import com.openai.models.RealtimeSessionVoice
 import com.swooby.alfredai.PushToTalkPreferences.Companion.getMaxResponseOutputTokens
 import com.swooby.alfredai.Utils.playAudioResourceOnce
+import com.swooby.alfredai.Utils.quote
 import com.swooby.alfredai.openai.realtime.RealtimeClient
 import com.swooby.alfredai.openai.realtime.RealtimeClient.RealtimeClientListener
 import com.swooby.alfredai.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
@@ -47,16 +62,30 @@ import com.twilio.audioswitch.AudioSwitch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import java.math.BigDecimal
+import java.net.UnknownHostException
 
 class MobileViewModel(application: Application) :
     SharedViewModel(application)
 {
     companion object {
-        const val DEBUG = true
+        const val DEBUG = false
+
+        private const val CHANNEL_ID = "SESSION_STATUS_CHANNEL"
+        private const val CHANNEL_NAME = "Session Status Channel"
+        private const val CHANNEL_DESCRIPTION = "Dismissible notifications for notable session status events"
+        private const val NOTIFICATION_ID_SESSION = 1001
+
+        @Suppress(
+            "SimplifyBooleanWithConstants",
+            "KotlinConstantConditions",
+        )
+        val debugSimulateSessionExpired = BuildConfig.DEBUG && false
     }
 
     override val TAG: String
@@ -66,15 +95,88 @@ class MobileViewModel(application: Application) :
     override val remoteCapabilityName: String
         get() = "verify_remote_alfredai_wear_app"
 
+    private var jobDebugFakeSessionExpired: Job? = null
+
     override fun init() {
         super.init()
+
+        createNotificationChannel()
+
         audioSwitchStart()
+
+        observeConnectionForServiceStartStop()
+
+        if (debugSimulateSessionExpired) {
+            jobDebugFakeSessionExpired = viewModelScope.launch {
+                delay(20_000L) // Delay for 20 seconds...
+                // Create a fake RealtimeServerEventError
+                val fakeError = RealtimeServerEventError(
+                    eventId = "fake-event-id",
+                    type = RealtimeServerEventError.Type.error,
+                    error = RealtimeServerEventErrorError(
+                        type = "invalid_request_error",
+                        message = "Your session hit the maximum duration of 30 minutes.",
+                        code = "session_expired",
+                    )
+                )
+                listener.onServerEventSessionExpired(fakeError)
+                Log.d(TAG, "Debug: Fake session expired event triggered.")
+                disconnect()
+            }
+        }
     }
 
     override fun close() {
         super.close()
+        disconnect()
+        onDisconnecting()
+        onDisconnected()
         audioSwitchStop()
     }
+
+    fun disconnect() {
+        if (realtimeClient?.isConnected == true) {
+            realtimeClient?.disconnect()
+        }
+    }
+
+    /**
+     * Called by listener.onDisconnected()
+     */
+    private fun onDisconnecting() {
+        if (jobDebugFakeSessionExpired?.isActive == true) {
+            jobDebugFakeSessionExpired?.cancel()
+        }
+        _connectionStateFlow.value = ConnectionState.Disconnected
+    }
+
+    /**
+     * Called by listener.onDisconnected()
+     */
+    private fun onDisconnected() {
+        audioSwitch.deactivate()
+    }
+
+    //
+    //region In-Use-Activities Detection
+    //
+
+    private val inUseActivities = mutableSetOf<Activity>()
+
+    private val hasNoInUseActivities: Boolean
+        get() = inUseActivities.isEmpty()
+
+    fun onStartOrResume(activity: Activity) {
+        inUseActivities.add(activity)
+    }
+
+    fun onPauseOrStop(activity: Activity) {
+        inUseActivities.remove(activity)
+    }
+
+    //
+    //endregion
+    //
 
     //
     //region Preferences
@@ -242,10 +344,16 @@ class MobileViewModel(application: Application) :
 
         _realtimeClient?.disconnect()
 
+        val httpClient = if (DEBUG)
+            RealtimeClient.httpLoggingClient
+        else
+            ApiClient.defaultClient
+
         _realtimeClient = RealtimeClient(
-            getApplication(),
-            prefs.apiKey,
-            sessionConfig,
+            applicationContext = getApplication(),
+            dangerousApiKey = prefs.apiKey,
+            sessionConfig = sessionConfig,
+            httpClient = httpClient,
             debug = DEBUG
         )
         _realtimeClient?.addListener(listener)
@@ -347,6 +455,125 @@ class MobileViewModel(application: Application) :
             }
         }
     }
+    //
+    //region Conversation
+    //
+
+    @Suppress(
+        "SimplifyBooleanWithConstants",
+        //"KotlinConstantConditions",
+    )
+    val debugLogConversation = BuildConfig.DEBUG && true
+
+    enum class ConversationSpeaker {
+        Local,
+        Remote,
+    }
+
+    data class ConversationItem(
+        val id: String?,
+        val speaker: ConversationSpeaker,
+        val initialText: String
+    ) {
+        var text by mutableStateOf(initialText)
+    }
+
+    private val _conversationItems = mutableStateListOf<ConversationItem>()
+    val conversationItems: List<ConversationItem>
+        get() = _conversationItems
+
+    fun conversationItemsClear() {
+        _conversationItems.clear()
+    }
+
+    //
+    //endregion
+    //
+
+    //
+    //region Service Start/Stop & Notifications
+    //
+
+    enum class ConnectionState {
+        Connecting,
+        Connected,
+        Disconnected,
+    }
+
+    private val _connectionStateFlow = MutableStateFlow(ConnectionState.Disconnected)
+    val connectionStateFlow = _connectionStateFlow.asStateFlow()
+
+    private fun observeConnectionForServiceStartStop() {
+        viewModelScope.launch {
+            connectionStateFlow.collect { connectionState ->
+                Log.i(TAG, "connectionStateFlow: connectionState=$connectionState")
+                when (connectionState) {
+                    ConnectionState.Connecting -> {
+                        MobileForegroundService.start(getApplication())
+                    }
+                    ConnectionState.Disconnected -> {
+                        MobileForegroundService.stop(getApplication())
+                    }
+                    else -> {}
+                }
+            }
+        }
+    }
+
+    private val notificationManager by lazy { getApplication<Application>().getSystemService(NotificationManager::class.java) }
+
+    private fun createNotificationChannel() {
+        val importance = NotificationManager.IMPORTANCE_DEFAULT
+        val channel = NotificationChannel(CHANNEL_ID, CHANNEL_NAME, importance).apply {
+            description = CHANNEL_DESCRIPTION
+        }
+        notificationManager.createNotificationChannel(channel)
+    }
+
+    private fun createNotification(contentTitle: String, contentText: String): Notification {
+        val context = getApplication<Application>()
+
+        val notificationPendingIntent = PendingIntent.getActivity(
+            context,
+            0,
+            Intent(context, MobileActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(context, CHANNEL_ID)
+            .setContentTitle(contentTitle)
+            .setContentText(contentText)
+            .setSmallIcon(R.drawable.alfredai_24)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true) // Makes the notification dismissible
+            .setOnlyAlertOnce(true) // Prevents multiple alerts if the notification is updated
+            .setContentIntent(notificationPendingIntent)
+            .build()
+    }
+
+    private fun updateNotification(contentTitle: String, contentText: String) {
+        val notification = createNotification(contentTitle, contentText)
+        notificationManager.notify(NOTIFICATION_ID_SESSION, notification)
+    }
+
+    private fun showNotificationSessionExpired(contentText: String) {
+        updateNotification("AlfredAI: Session Expired", contentText)
+    }
+
+    private fun showNotificationMysteriousUnknownHostException() {
+        val message = "Mysterious \"Unable to resolve host `api.openai.com`\" error; Try again."
+        updateNotification("AlfredAI: Client Error", quote(message))
+    }
+
+    private fun showNotificationSessionClientError(message: String) {
+        updateNotification("AlfredAI: Client Error", quote(message))
+    }
+
+    //
+    //endregion
+    //
 
     //
     //region persistent RealtimeClientListener
@@ -355,29 +582,74 @@ class MobileViewModel(application: Application) :
     private val listeners = mutableListOf<RealtimeClientListener>()
     private val listener = object : RealtimeClientListener {
         override fun onConnecting() {
+            _connectionStateFlow.value = ConnectionState.Connecting
+
+            conversationItemsClear()
+
             listeners.forEach {
                 it.onConnecting()
             }
         }
 
         override fun onError(error: Exception) {
+            when (error) {
+                is UnknownHostException -> {
+                    /*
+    2025-01-17 17:43:21.190 27419-27475 okhttp.OkHttpClient com.swooby.alfredai I  <-- HTTP FAILED: java.net.UnknownHostException: Unable to resolve host "api.openai.com": No address associated with hostname
+    2025-01-17 17:43:21.190 27419-27475 RealtimeClient      com.swooby.alfredai E  connect: exception=java.net.UnknownHostException: Unable to resolve host "api.openai.com": No address associated with hostname
+    2025-01-17 17:43:21.190 27419-27475 PushToTalkActivity  com.swooby.alfredai D  onError(java.net.UnknownHostException: Unable to resolve host "api.openai.com": No address associated with hostname)
+    2025-01-17 17:43:21.191 27419-27475 RealtimeClient      com.swooby.alfredai D  +disconnect()
+    2025-01-17 17:43:21.191 27419-27475 RealtimeClient      com.swooby.alfredai D  -disconnect()
+    2025-01-17 17:43:21.191 27419-27475 RealtimeClient      com.swooby.alfredai D  connect: ephemeralApiKey=null
+    2025-01-17 17:43:21.191 27419-27475 PushToTalkActivity  com.swooby.alfredai D  onError(com.openai.infrastructure.ClientException: No Ephemeral API Key In Response)
+                    */
+                    showNotificationMysteriousUnknownHostException()
+                }
+
+                is ClientException -> {
+                    var message: String? = error.message ?: error.toString()
+                    val response = error.response as? ClientError<*>
+                    if (response != null) {
+                        var expectedJsonBody = response.body
+                        if (expectedJsonBody == null) {
+                            message = response.message
+                        }
+                        if (expectedJsonBody == null && message == null) {
+                            expectedJsonBody = "{ \"error\": { \"code\": \"-1\" }"
+                        }
+                        if (expectedJsonBody != null) {
+                            val jsonObject = JSONObject(expectedJsonBody.toString())
+                            val jsonError = jsonObject.getJSONObject("error")
+                            val errorCode = jsonError.getString("code")
+                            message = errorCode
+                        }
+                    }
+                    showNotificationSessionClientError(message!!)
+                }
+            }
             listeners.forEach {
                 it.onError(error)
             }
         }
 
         override fun onConnected() {
+            _connectionStateFlow.value = ConnectionState.Connected
+
             audioSwitch.activate()
+
             listeners.forEach {
                 it.onConnected()
             }
         }
 
         override fun onDisconnected() {
-            audioSwitch.deactivate()
+            this@MobileViewModel.onDisconnecting()
+
             listeners.forEach {
                 it.onDisconnected()
             }
+
+            this@MobileViewModel.onDisconnected()
         }
 
         override fun onBinaryMessageReceived(data: ByteArray): Boolean {
@@ -395,42 +667,85 @@ class MobileViewModel(application: Application) :
         }
 
         override fun onServerEventConversationCreated(realtimeServerEventConversationCreated: RealtimeServerEventConversationCreated) {
+            if (debugLogConversation) {
+                Log.d(TAG, "onServerEventConversationCreated($realtimeServerEventConversationCreated)")
+            }
             listeners.forEach {
                 it.onServerEventConversationCreated(realtimeServerEventConversationCreated)
             }
         }
 
         override fun onServerEventConversationItemCreated(realtimeServerEventConversationItemCreated: RealtimeServerEventConversationItemCreated) {
+            if (debugLogConversation) {
+                Log.d(TAG, "onServerEventConversationItemCreated($realtimeServerEventConversationItemCreated)")
+            }
+            val item = realtimeServerEventConversationItemCreated.item
+            val id = item.id
+            val content = item.content
+            val text = content?.joinToString(separator = "") { it.text ?: "" } ?: ""
+            if (text.isNotBlank()) {
+                if (debugLogConversation) {
+                    Log.w(TAG, "onServerEventConversationItemCreated: conversationItems.add(ConversationItem(id=${quote(id)}, initialText=${quote(text)}")
+                }
+                _conversationItems.add(
+                    ConversationItem(
+                        id = id,
+                        speaker = ConversationSpeaker.Local,
+                        initialText = text
+                    )
+                )
+            }
             listeners.forEach {
                 it.onServerEventConversationItemCreated(realtimeServerEventConversationItemCreated)
             }
         }
 
         override fun onServerEventConversationItemDeleted(realtimeServerEventConversationItemDeleted: RealtimeServerEventConversationItemDeleted) {
+            if (debugLogConversation) {
+                Log.d(TAG, "onServerEventConversationItemDeleted($realtimeServerEventConversationItemDeleted)")
+            }
             listeners.forEach {
                 it.onServerEventConversationItemDeleted(realtimeServerEventConversationItemDeleted)
             }
         }
 
-        override fun onServerEventConversationItemInputAudioTranscriptionCompleted(
-            realtimeServerEventConversationItemInputAudioTranscriptionCompleted: RealtimeServerEventConversationItemInputAudioTranscriptionCompleted
-        ) {
+        override fun onServerEventConversationItemInputAudioTranscriptionCompleted(realtimeServerEventConversationItemInputAudioTranscriptionCompleted: RealtimeServerEventConversationItemInputAudioTranscriptionCompleted) {
+            if (debugLogConversation) {
+                Log.d(TAG, "onServerEventConversationItemInputAudioTranscriptionCompleted($realtimeServerEventConversationItemInputAudioTranscriptionCompleted)")
+            }
+            val id = realtimeServerEventConversationItemInputAudioTranscriptionCompleted.itemId
+            val transcript =
+                realtimeServerEventConversationItemInputAudioTranscriptionCompleted.transcript.trim() // DO TRIM!
+            if (transcript.isNotBlank()) {
+                if (debugLogConversation) {
+                    Log.w(TAG, "onServerEventConversationItemInputAudioTranscriptionCompleted: conversationItems.add(ConversationItem(id=${quote(id)}, initialText=${quote(transcript)}")
+                }
+                _conversationItems.add(
+                    ConversationItem(
+                        id = id,
+                        speaker = ConversationSpeaker.Local,
+                        initialText = transcript
+                    )
+                )
+            }
             listeners.forEach {
                 it.onServerEventConversationItemInputAudioTranscriptionCompleted(realtimeServerEventConversationItemInputAudioTranscriptionCompleted)
             }
         }
 
-        override fun onServerEventConversationItemInputAudioTranscriptionFailed(
-            realtimeServerEventConversationItemInputAudioTranscriptionFailed: RealtimeServerEventConversationItemInputAudioTranscriptionFailed
-        ) {
+        override fun onServerEventConversationItemInputAudioTranscriptionFailed(realtimeServerEventConversationItemInputAudioTranscriptionFailed: RealtimeServerEventConversationItemInputAudioTranscriptionFailed) {
+            if (debugLogConversation) {
+                Log.d(TAG, "onServerEventConversationItemInputAudioTranscriptionFailed($realtimeServerEventConversationItemInputAudioTranscriptionFailed)")
+            }
             listeners.forEach {
                 it.onServerEventConversationItemInputAudioTranscriptionFailed(realtimeServerEventConversationItemInputAudioTranscriptionFailed)
             }
         }
 
-        override fun onServerEventConversationItemTruncated(
-            realtimeServerEventConversationItemTruncated: RealtimeServerEventConversationItemTruncated
-        ) {
+        override fun onServerEventConversationItemTruncated(realtimeServerEventConversationItemTruncated: RealtimeServerEventConversationItemTruncated) {
+            if (debugLogConversation) {
+                Log.d(TAG, "onServerEventConversationItemTruncated($realtimeServerEventConversationItemTruncated)")
+            }
             listeners.forEach {
                 it.onServerEventConversationItemTruncated(realtimeServerEventConversationItemTruncated)
             }
@@ -448,25 +763,19 @@ class MobileViewModel(application: Application) :
             }
         }
 
-        override fun onServerEventInputAudioBufferCommitted(
-            realtimeServerEventInputAudioBufferCommitted: RealtimeServerEventInputAudioBufferCommitted
-        ) {
+        override fun onServerEventInputAudioBufferCommitted(realtimeServerEventInputAudioBufferCommitted: RealtimeServerEventInputAudioBufferCommitted) {
             listeners.forEach {
                 it.onServerEventInputAudioBufferCommitted(realtimeServerEventInputAudioBufferCommitted)
             }
         }
 
-        override fun onServerEventInputAudioBufferSpeechStarted(
-            realtimeServerEventInputAudioBufferSpeechStarted: RealtimeServerEventInputAudioBufferSpeechStarted
-        ) {
+        override fun onServerEventInputAudioBufferSpeechStarted(realtimeServerEventInputAudioBufferSpeechStarted: RealtimeServerEventInputAudioBufferSpeechStarted) {
             listeners.forEach {
                 it.onServerEventInputAudioBufferSpeechStarted(realtimeServerEventInputAudioBufferSpeechStarted)
             }
         }
 
-        override fun onServerEventInputAudioBufferSpeechStopped(
-            realtimeServerEventInputAudioBufferSpeechStopped: RealtimeServerEventInputAudioBufferSpeechStopped
-        ) {
+        override fun onServerEventInputAudioBufferSpeechStopped(realtimeServerEventInputAudioBufferSpeechStopped: RealtimeServerEventInputAudioBufferSpeechStopped) {
             listeners.forEach {
                 it.onServerEventInputAudioBufferSpeechStopped(realtimeServerEventInputAudioBufferSpeechStopped)
             }
@@ -496,43 +805,101 @@ class MobileViewModel(application: Application) :
             }
         }
 
-        override fun onServerEventResponseAudioTranscriptDelta(
-            realtimeServerEventResponseAudioTranscriptDelta: RealtimeServerEventResponseAudioTranscriptDelta
-        ) {
+        override fun onServerEventResponseAudioTranscriptDelta(realtimeServerEventResponseAudioTranscriptDelta: RealtimeServerEventResponseAudioTranscriptDelta) {
+            if (debugLogConversation) {
+                Log.d(TAG, "onServerEventResponseAudioTranscriptDelta($realtimeServerEventResponseAudioTranscriptDelta)")
+            }
+            val id = realtimeServerEventResponseAudioTranscriptDelta.itemId
+            val delta =
+                realtimeServerEventResponseAudioTranscriptDelta.delta // DO **NOT** TRIM!
+
+            // Append this delta to any current in progress conversation,
+            // or create a new conversation
+            val index = _conversationItems.indexOfFirst { it.id == id }
+            if (debugLogConversation) {
+                Log.w(TAG, "onServerEventResponseAudioTranscriptDelta: id=$id, delta=$delta, index=$index")
+            }
+            if (index == -1) {
+                val conversationItem = ConversationItem(
+                    id = id,
+                    speaker = ConversationSpeaker.Remote,
+                    initialText = delta,
+                )
+                if (debugLogConversation) {
+                    Log.w(TAG, "conversationItems.add($conversationItem)")
+                }
+                _conversationItems.add(conversationItem)
+            } else {
+                val conversationItem = _conversationItems[index]
+                conversationItem.text += delta
+                if (debugLogConversation) {
+                    Log.w(TAG, "conversationItems.set($index, $conversationItem)")
+                }
+                _conversationItems[index] = conversationItem
+            }
             listeners.forEach {
                 it.onServerEventResponseAudioTranscriptDelta(realtimeServerEventResponseAudioTranscriptDelta)
             }
         }
 
-        override fun onServerEventResponseAudioTranscriptDone(
-            realtimeServerEventResponseAudioTranscriptDone: RealtimeServerEventResponseAudioTranscriptDone
-        ) {
+        override fun onServerEventResponseAudioTranscriptDone(realtimeServerEventResponseAudioTranscriptDone: RealtimeServerEventResponseAudioTranscriptDone) {
+            if (debugLogConversation) {
+                Log.d(TAG, "onServerEventResponseAudioTranscriptDone($realtimeServerEventResponseAudioTranscriptDone)")
+            }
             listeners.forEach {
                 it.onServerEventResponseAudioTranscriptDone(realtimeServerEventResponseAudioTranscriptDone)
             }
         }
 
-        override fun onServerEventResponseContentPartAdded(
-            realtimeServerEventResponseContentPartAdded: RealtimeServerEventResponseContentPartAdded
-        ) {
+        override fun onServerEventResponseContentPartAdded(realtimeServerEventResponseContentPartAdded: RealtimeServerEventResponseContentPartAdded) {
+            if (debugLogConversation) {
+                Log.d(TAG, "onServerEventResponseContentPartAdded($realtimeServerEventResponseContentPartAdded)")
+            }
             listeners.forEach {
                 it.onServerEventResponseContentPartAdded(realtimeServerEventResponseContentPartAdded)
             }
         }
 
         override fun onServerEventResponseContentPartDone(realtimeServerEventResponseContentPartDone: RealtimeServerEventResponseContentPartDone) {
+            if (debugLogConversation) {
+                Log.d(TAG, "onServerEventResponseContentPartDone($realtimeServerEventResponseContentPartDone)")
+            }
             listeners.forEach {
                 it.onServerEventResponseContentPartDone(realtimeServerEventResponseContentPartDone)
             }
         }
 
         override fun onServerEventResponseCreated(realtimeServerEventResponseCreated: RealtimeServerEventResponseCreated) {
+            if (debugLogConversation) {
+                Log.d(TAG, "onServerEventResponseCreated($realtimeServerEventResponseCreated)")
+            }
             listeners.forEach {
                 it.onServerEventResponseCreated(realtimeServerEventResponseCreated)
             }
         }
 
         override fun onServerEventResponseDone(realtimeServerEventResponseDone: RealtimeServerEventResponseDone) {
+            if (debugLogConversation) {
+                Log.d(TAG, "onServerEventResponseDone($realtimeServerEventResponseDone)")
+            }
+            realtimeServerEventResponseDone.response.output?.forEach { outputConversationItem ->
+                if (debugLogConversation) {
+                    Log.w(TAG, "onServerEventResponseDone: outputConversationItem=$outputConversationItem")
+                }
+                val id = outputConversationItem.id ?: return@forEach
+                val index = _conversationItems.indexOfFirst { it.id == id }
+                if (index != -1) {
+                    val conversationItem = _conversationItems[index]
+                    if (debugLogConversation) {
+                        Log.w(TAG, "onServerEventResponseDone: removing $conversationItem at index=$index")
+                    }
+                    _conversationItems.removeAt(index)
+                    if (debugLogConversation) {
+                        Log.w(TAG, "onServerEventResponseDone: adding $conversationItem at end")
+                    }
+                    _conversationItems.add(conversationItem)
+                }
+            }
             listeners.forEach {
                 it.onServerEventResponseDone(realtimeServerEventResponseDone)
             }
@@ -591,6 +958,11 @@ class MobileViewModel(application: Application) :
         }
 
         override fun onServerEventSessionExpired(realtimeServerEventError: RealtimeServerEventError) {
+            if (hasNoInUseActivities) {
+                val message = realtimeServerEventError.error.message
+                showNotificationSessionExpired(message)
+            }
+
             listeners.forEach {
                 it.onServerEventSessionExpired(realtimeServerEventError)
             }

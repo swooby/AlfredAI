@@ -14,6 +14,14 @@
 
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!--
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
     <application
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -35,6 +43,26 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".MobileForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            >
+            <!--
+            https://developer.android.com/develop/background-work/services/fgs/service-types#microphone
+            https://developer.android.com/develop/background-work/services/fgs/service-types#remote-messaging
+            https://developer.android.com/develop/background-work/services/fgs/service-types#special-use
+            -->
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="OpenAI Realtime WebRTC Voice Assistant Session (VoIP Call)"
+                />
+            <intent-filter>
+                <action android:name="com.swooby.alfredai.action.START" />
+                <action android:name="com.swooby.alfredai.action.STOP" />
+            </intent-filter>
+        </service>
 
     </application>
 

@@ -46,11 +46,13 @@ abstract class SharedViewModel(application: Application) :
     }
 
     open fun init() {
+        Log.d(TAG, "init()")
         messageClient.addListener(messageClientListener)
         searchForRemoteAppNode()
     }
 
     open fun close() {
+        Log.d(TAG, "close()")
         messageClient.removeListener(messageClientListener)
     }
 

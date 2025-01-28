@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 
+/*
 @MainThread
 inline fun <reified VM : ViewModel> ComponentActivity.appViewModels(): Lazy<VM> {
     return ViewModelLazy(
@@ -18,6 +19,7 @@ inline fun <reified VM : ViewModel> ComponentActivity.appViewModels(): Lazy<VM> 
         { defaultViewModelCreationExtras }
     )
 }
+*/
 
 class AlfredAiApp : Application(), ViewModelStoreOwner
 {
@@ -25,8 +27,8 @@ class AlfredAiApp : Application(), ViewModelStoreOwner
 
     val mobileViewModel by lazy {
         ViewModelProvider(
-            this,
-            ViewModelProvider.AndroidViewModelFactory.getInstance(this)
+            owner = this,
+            factory = ViewModelProvider.AndroidViewModelFactory.getInstance(this)
         )[MobileViewModel::class.java]
     }
 
