@@ -665,7 +665,10 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
 
     val disabledColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.disabled)
 
-    AlfredAITheme(dynamicColor = false) {
+    AlfredAITheme(
+        dynamicColor = false,
+        darkTheme = true,
+    ) {
         Scaffold(modifier = Modifier
             .fillMaxSize(),
             topBar = {

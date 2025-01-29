@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -13,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -32,19 +32,16 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import androidx.lifecycle.ViewModelProvider
 import androidx.wear.compose.material.CircularProgressIndicator
 import androidx.wear.compose.material.ContentAlpha
 import androidx.wear.compose.material.Icon
-import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.TimeText
 import androidx.wear.tooling.preview.devices.WearDevices
-import com.swooby.alfredai.AlfredAiApp
 import com.swooby.alfredai.R
 import com.swooby.alfredai.SharedViewModel
 import com.swooby.alfredai.WearViewModel
 import com.swooby.alfredai.appViewModels
-import com.swooby.alfredai.presentation.theme.AlfredAITheme
+import com.swooby.alfredai.ui.theme.AlfredAITheme
 
 // TODO: If phone app is not running:
 //  https://developer.android.com/reference/androidx/wear/remote/interactions/RemoteActivityHelper
@@ -99,13 +96,16 @@ fun WearApp(
     var isConnectingOrConnected by remember { mutableStateOf(false) }
     val isConnected = phoneAppNodeId != null
 
-    val disabledColor = MaterialTheme.colors.onSurface.copy(alpha = ContentAlpha.disabled)
+    val disabledColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.disabled)
 
-    AlfredAITheme {
+    AlfredAITheme(
+        dynamicColor = false,
+        darkTheme = true,
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colors.background),
+                .background(MaterialTheme.colorScheme.background),
             contentAlignment = Alignment.Center
         ) {
             TimeText()
@@ -125,7 +125,7 @@ fun WearApp(
 
                     isConnectingOrConnected -> {
                         CircularProgressIndicator(
-                            indicatorColor = MaterialTheme.colors.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primary,
                             strokeWidth = 6.dp,
                             modifier = Modifier.size(150.dp)
                         )
@@ -179,16 +179,16 @@ fun PushToTalkButton(
         ?: remember { mutableStateOf(null) }
     val targetName = if (phoneAppNodeId != null) "Phone" else targetNameDefault
 
-    val disabledColor = MaterialTheme.colors.onSurface.copy(alpha = 0.38f)
+    val disabledColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.disabled)
     val boxAlpha = if (enabled) 1.0f else 0.38f
 
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .size(120.dp)
-            .border(4.dp, if (enabled) MaterialTheme.colors.primary else disabledColor, shape = CircleShape)
+            .border(4.dp, if (enabled) MaterialTheme.colorScheme.primary else disabledColor, shape = CircleShape)
             .background(
-                color = if (pttState == SharedViewModel.PttState.Pressed) MaterialTheme.colors.primary else MaterialTheme.colors.surface,
+                color = if (pttState == SharedViewModel.PttState.Pressed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
                 shape = CircleShape
             )
             .let { baseModifier ->

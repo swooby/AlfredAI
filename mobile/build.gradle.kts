@@ -56,22 +56,11 @@ android {
 }
 
 dependencies {
-    implementation(libs.androidx.appcompat)
-    implementation(libs.androidx.activity)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.constraintlayout)
-    implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.material)
     implementation(libs.androidx.material3)
-    implementation(libs.androidx.runtime.android)
-    implementation(libs.androidx.ui)
-    implementation(libs.androidx.ui.graphics)
-    implementation(libs.androidx.ui.tooling.preview)
-    implementation(libs.androidx.ui.tooling.preview.android)
     implementation(libs.material)
-    implementation(libs.play.services.wearable)
 
     testImplementation(libs.junit)
 

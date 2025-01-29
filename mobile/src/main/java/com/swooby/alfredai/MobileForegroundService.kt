@@ -225,6 +225,7 @@ class MobileForegroundService : Service() {
 
     private fun createNotification(contentTitle: String, contentText: String): Notification {
         val context = this
+        val resId = R.drawable.alfredai_24
 
         val notificationPendingIntent = PendingIntent.getActivity(
             context,
@@ -247,15 +248,15 @@ class MobileForegroundService : Service() {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setContentTitle(contentTitle)
             .setContentText(contentText)
-            .setSmallIcon(R.drawable.alfredai_24)
+            .setSmallIcon(resId)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setAutoCancel(false)
             .setContentIntent(notificationPendingIntent)
         if (isForegroundStarted) {
             val person = Person.Builder()
-                .setName(CONNECTION_NAME)
-                .setIcon(IconCompat.createWithResource(context, R.drawable.alfredai_24))
+                .setName("AlfredAI->OpenAI")
+                .setIcon(IconCompat.createWithResource(context, resId))
                 .setImportant(true)
                 .setBot(true)
                 .build()
