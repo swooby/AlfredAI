@@ -3,9 +3,13 @@
     xmlns:tools="http://schemas.android.com/tools"
     >
 
-    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <!--
+    For https://github.com/twilio/audioswitch/ per:
+    https://github.com/twilio/audioswitch/blob/master/README.md#bluetooth-support
+    -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
 
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -16,10 +20,7 @@
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!--
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
-    -->
+    <!-- Must match `com.swooby.alfredai.MobileForegroundService.FOREGROUND_SERVICE_PERMISSION`-->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
@@ -50,9 +51,12 @@
             android:foregroundServiceType="specialUse"
             >
             <!--
+            `foregroundServiceType` must compliment the `uses-permission FOREGROUND_SERVICE_*` above
             https://developer.android.com/develop/background-work/services/fgs/service-types#microphone
             https://developer.android.com/develop/background-work/services/fgs/service-types#remote-messaging
             https://developer.android.com/develop/background-work/services/fgs/service-types#special-use
+
+            `specialUse` requires defining a property `PROPERTY_SPECIAL_USE_FGS_SUBTYPE`...
             -->
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"

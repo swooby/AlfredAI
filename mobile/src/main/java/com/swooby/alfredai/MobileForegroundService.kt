@@ -1,14 +1,13 @@
 package com.swooby.alfredai
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.util.Log
 import android.widget.Toast
@@ -28,12 +27,20 @@ class MobileForegroundService : Service() {
         private const val TAG = "MobileForegroundService"
 
         /**
-         * Must compliment AndroidManifest's `foregroundServiceType` value for this service.
+         * Must match AndroidManifest's `<uses-permission android:name="android.permission.FOREGROUND_SERVICE_*" />`
          */
-        const val FOREGROUND_SERVICE_TYPE =
-            //ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            //ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        const val FOREGROUND_SERVICE_PERMISSION =
+            //Manifest.permission.FOREGROUND_SERVICE_MICROPHONE
+            //Manifest.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING
+            Manifest.permission.FOREGROUND_SERVICE_SPECIAL_USE
+
+        @Suppress("KotlinConstantConditions")
+        val FOREGROUND_SERVICE_TYPE = when (FOREGROUND_SERVICE_PERMISSION) {
+                Manifest.permission.FOREGROUND_SERVICE_MICROPHONE -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                Manifest.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING -> ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING
+                Manifest.permission.FOREGROUND_SERVICE_SPECIAL_USE -> ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                else -> throw IllegalArgumentException("Unknown FOREGROUND_SERVICE_PERMISSION: $FOREGROUND_SERVICE_PERMISSION")
+            }
 
         private const val ACTION_DISCONNECT = "com.swooby.alfredai.action.DISCONNECT"
 

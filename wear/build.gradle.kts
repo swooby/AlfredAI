@@ -40,20 +40,21 @@ android {
 
 dependencies {
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.compose.material)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.ui.tooling.preview.android)
     implementation(libs.androidx.core.splashscreen)
-    implementation(libs.androidx.material)
-    implementation(libs.androidx.material3)
-    implementation(libs.androidx.tiles.tooling.preview)
-    implementation(libs.androidx.watchface.complications.data.source.ktx)
+    implementation(libs.androidx.wear.tiles.tooling.preview)
+    implementation(libs.androidx.wear.watchface.complications.data.source.ktx)
     implementation(libs.horologist.tiles)
     implementation(libs.play.services.wearable)
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.ui.test.junit4)
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
 
-    debugImplementation(libs.androidx.tiles.tooling)
-    debugImplementation(libs.androidx.ui.test.manifest)
-    debugImplementation(libs.androidx.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+    debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.wear.tiles.tooling)
 
     implementation(project(":shared"))
 }

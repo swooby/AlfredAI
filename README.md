@@ -35,6 +35,11 @@ OpenAI Realtime API over WebRTC Push-To-Talk Android Phone[/Mobile] + Watch[/Wea
 8. Find way to save conversations to https://chatgpt.com/ history
 9. Implement a `VoiceInteractionService`? https://developer.android.com/reference/android/service/voice/VoiceInteractionService
 
+## Bugs
+1. The on/off switch acts a little odd
+2. SharedViewModel needs to search for remote device when "waking up"  
+   (especially when disconnected/screen-off, when screen turns on or reconnecting)
+
 ## Development
 * If Mobile or Wear physical device wireless debugging does not connect in Android Studio:  
    (from https://youtu.be/lLUYPdaf_Ow)

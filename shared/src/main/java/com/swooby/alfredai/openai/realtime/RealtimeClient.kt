@@ -428,7 +428,7 @@ class RealtimeClient(private val applicationContext: Context,
             }
         }, offerConstraints)
 
-        log.d("-connect(); ephemeralApiKey=$ephemeralApiKey")
+        log.d("-connect()")//; ephemeralApiKey=$ephemeralApiKey")
         return ephemeralApiKey
     }
 

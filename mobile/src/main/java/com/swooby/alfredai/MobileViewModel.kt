@@ -74,7 +74,7 @@ class MobileViewModel(application: Application) :
     SharedViewModel(application)
 {
     companion object {
-        const val DEBUG = false
+        const val DEBUG = AlfredAiApp.DEBUG
 
         private const val CHANNEL_ID = "SESSION_STATUS_CHANNEL"
         private const val CHANNEL_NAME = "Session Status Channel"
@@ -999,6 +999,7 @@ class MobileViewModel(application: Application) :
 
     private val audioSwitch = AudioSwitch(
         context = application,
+        loggingEnabled = DEBUG,
         preferredDeviceList = listOf(
             AudioDevice.BluetoothHeadset::class.java,
             AudioDevice.WiredHeadset::class.java,

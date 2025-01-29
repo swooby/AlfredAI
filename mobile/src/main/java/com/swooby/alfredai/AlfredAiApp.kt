@@ -23,6 +23,10 @@ inline fun <reified VM : ViewModel> ComponentActivity.appViewModels(): Lazy<VM> 
 
 class AlfredAiApp : Application(), ViewModelStoreOwner
 {
+    companion object {
+        const val DEBUG = false
+    }
+
     override val viewModelStore = ViewModelStore()
 
     val mobileViewModel by lazy {

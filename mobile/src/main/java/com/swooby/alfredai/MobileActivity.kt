@@ -276,7 +276,7 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                             delay(debugConnectDelayMillis)
                         }
                         val ephemeralApiKey = realtimeClient.connect()
-                        Log.d(TAG, "ephemeralApiKey: $ephemeralApiKey")
+                        //Log.d(TAG, "ephemeralApiKey: $ephemeralApiKey")
                         if (ephemeralApiKey != null) {
                             realtimeClient.setLocalAudioTrackMicrophoneEnabled(false)
                         }
@@ -333,18 +333,21 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
     //region Permissions
     //
 
-    val requiredPermissions = remember {
-        mutableStateListOf(
-            Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.BLUETOOTH,
-            Manifest.permission.BLUETOOTH_CONNECT,
-            Manifest.permission.BLUETOOTH_SCAN,
-            Manifest.permission.FOREGROUND_SERVICE,
-            //Manifest.permission.FOREGROUND_SERVICE_MICROPHONE,
-            //Manifest.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING,
-            Manifest.permission.FOREGROUND_SERVICE_SPECIAL_USE,
-        )
-    }
+    val requiredPermissions = arrayOf(
+        Manifest.permission.RECORD_AUDIO,
+        /*
+        NOTE: As of Android 12 (API 31), BLUETOOTH* no longer absolutely requires LOCATION permission per:
+        https://developer.android.com/about/versions/12/summary
+        https://developer.android.com/about/versions/12/behavior-changes-12
+        https://developer.android.com/develop/connectivity/bluetooth/bt-permissions
+        https://developer.android.com/develop/connectivity/bluetooth/bt-permissions#declare-android12-or-higher
+         */
+        Manifest.permission.BLUETOOTH_CONNECT,
+        Manifest.permission.BLUETOOTH_SCAN,
+        Manifest.permission.POST_NOTIFICATIONS,
+        Manifest.permission.FOREGROUND_SERVICE,
+        MobileForegroundService.FOREGROUND_SERVICE_PERMISSION,
+    )
 
     var hasAllRequiredPermissions by remember {
         mutableStateOf(
@@ -390,7 +393,7 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                         .setTitle("Permission Required")
                         .setMessage("This app needs “${permissionsText}” permissions for full functionality.\nPlease grant the permission.")
                         .setPositiveButton("Grant") { _, _ ->
-                            requestPermissionsLauncher!!.launch(requiredPermissions.toTypedArray())
+                            requestPermissionsLauncher!!.launch(requiredPermissions)
                         }
                         .setNegativeButton("Cancel", null)
                         .show()
@@ -707,7 +710,7 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                         if (hasAllRequiredPermissions) {
                                             connect()
                                         } else {
-                                            requestPermissionsLauncher.launch(requiredPermissions.toTypedArray())
+                                            requestPermissionsLauncher.launch(requiredPermissions)
                                         }
                                     } else {
                                         disconnect(isManual = true)
@@ -759,7 +762,7 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                         if (hasAllRequiredPermissions) {
                             connectIfAutoConnectAndNotManualOff()
                         } else {
-                            requestPermissionsLauncher.launch(requiredPermissions.toTypedArray())
+                            requestPermissionsLauncher.launch(requiredPermissions)
                         }
                     }
 
