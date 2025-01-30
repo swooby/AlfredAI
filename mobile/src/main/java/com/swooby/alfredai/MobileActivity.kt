@@ -24,11 +24,13 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -63,7 +65,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -77,12 +79,15 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat.checkSelfPermission
@@ -127,6 +132,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.net.UnknownHostException
@@ -203,7 +209,7 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                 val subjects = listOf("The cat", "The dog", "The bird", "The fish")
                 val verbs = listOf("jumps", "runs", "flies", "swims")
                 val objects = listOf("over the fence", "in the park", "through the air", "in the water")
-                return "${subjects.random()} ${verbs.random()} ${objects.random()}."
+                return "${subjects.random()} ${verbs.random()} ${objects.random()}.".repeat((20..30).random())
             }
 
             for (i in 0..20) {
@@ -220,16 +226,6 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
     }
 
     val conversationItems = mobileViewModel?.conversationItems ?: mockConversationItems()
-
-    val conversationListState = rememberLazyListState()
-    LaunchedEffect(Unit) {
-        snapshotFlow { conversationItems.lastOrNull()?.text }
-            .collect {
-                if (conversationItems.isNotEmpty()) {
-                    conversationListState.animateScrollToItem(conversationItems.size - 1)
-                }
-            }
-    }
 
     //
     //endregion
@@ -812,27 +808,50 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                     )
                                 }
                             } else {
+                                var visibleTop by remember { mutableIntStateOf(0) }
+                                var lastItemHeight by remember { mutableStateOf(0) }
+
+                                val conversationListState = rememberLazyListState()
+
+                                LaunchedEffect(conversationItems) {
+                                    snapshotFlow { conversationItems.lastOrNull()?.text }
+                                        .collectLatest {
+                                            if (conversationItems.isNotEmpty()) {
+                                                val lastIndex = conversationItems.size - 1
+                                                conversationListState.animateScrollToItem(
+                                                    index = lastIndex,
+                                                    scrollOffset = lastItemHeight
+                                                )
+                                            }
+                                        }
+                                }
+
+                                val lazyColumnContentPadding = 8
+
                                 LazyColumn(
                                     modifier = Modifier
-                                        .border(
-                                            1.dp,
-                                            Color.LightGray,
-                                            shape = RoundedCornerShape(8.dp)
-                                        )
+                                        .border(1.dp, Color.LightGray, shape = RoundedCornerShape(8.dp))
                                         .fillMaxWidth()
-                                        .weight(1f),
+                                        .weight(1f)
+                                        .onGloballyPositioned { coordinates ->
+                                            visibleTop = coordinates.positionInRoot().y.toInt()
+                                        },
                                     verticalArrangement = Arrangement.spacedBy(8.dp),
-                                    contentPadding = PaddingValues(8.dp),
+                                    contentPadding = PaddingValues(lazyColumnContentPadding.dp),
                                     state = conversationListState,
                                 ) {
                                     items(
                                         count = conversationItems.size,
                                     ) { index ->
+                                        var avatarHeight by remember { mutableIntStateOf(0) }
+                                        var avatarOffsetY by remember { mutableIntStateOf(0) }
+
                                         val item = conversationItems[index]
                                         val avatarResId: Int
                                         val horizontalAlignment: Arrangement.Horizontal
                                         val contentAlignment: Alignment
                                         val textAlign: TextAlign
+
                                         when (item.speaker) {
                                             MobileViewModel.ConversationSpeaker.Local -> {
                                                 avatarResId = R.drawable.baseline_person_24
@@ -850,15 +869,58 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                         }
                                         Row(
                                             modifier = Modifier
-                                                .fillMaxWidth(),
-                                            verticalAlignment = Alignment.CenterVertically,
+                                                .fillMaxWidth()
+                                                .height(IntrinsicSize.Min) // Makes Row as tall as the tallest item
+                                                .onGloballyPositioned { coordinates ->
+                                                    val firstVisibleItemIndex = conversationListState.firstVisibleItemIndex
+                                                    val lastItemIndex = conversationItems.size - 1
+                                                    when (index) {
+                                                        firstVisibleItemIndex -> {
+                                                            val positionInRoot = coordinates.positionInRoot()
+                                                            val rowTop = positionInRoot.y.toInt()
+                                                            val rowHeight = coordinates.size.height
+                                                            val rowBottom = rowTop + rowHeight
+
+                                                            if (rowTop < visibleTop) {
+                                                                // top of the row/item is above the visible area;
+                                                                // offset the avatar down
+                                                                if (visibleTop + avatarHeight + lazyColumnContentPadding < rowBottom) {
+                                                                    // the row/item has enough height to show the whole avatar;
+                                                                    // show it at the top of the visible area
+                                                                    avatarOffsetY = visibleTop - rowTop + lazyColumnContentPadding
+                                                                } else {
+                                                                    // the row/item does not have enough height to show the whole avatar;
+                                                                    // let it scroll off the visible area
+                                                                    avatarOffsetY = rowHeight - avatarHeight - lazyColumnContentPadding
+                                                                }
+                                                            } else {
+                                                                // top of the row/item is at or in the visible area;
+                                                                // restore the offset to 0
+                                                                avatarOffsetY = 0
+                                                            }
+                                                        }
+                                                        lastItemIndex -> {
+                                                            lastItemHeight = coordinates.size.height
+                                                        }
+                                                    }
+                                                },
+                                            verticalAlignment = Alignment.Top,
                                             horizontalArrangement = horizontalAlignment
                                         ) {
                                             if (item.speaker == MobileViewModel.ConversationSpeaker.Local) {
-                                                Icon(
-                                                    painterResource(id = avatarResId),
-                                                    contentDescription = "Local",
-                                                )
+                                                Box(
+                                                    modifier = Modifier
+                                                        .offset { IntOffset(0, avatarOffsetY) },
+                                                    contentAlignment = Alignment.TopCenter
+                                                ) {
+                                                    Icon(
+                                                        modifier = Modifier.onGloballyPositioned { coordinates ->
+                                                            avatarHeight = coordinates.size.height
+                                                        },
+                                                        painter = painterResource(id = avatarResId),
+                                                        contentDescription = "Local",
+                                                    )
+                                                }
                                                 Spacer(modifier = Modifier.width(8.dp))
                                             }
                                             Box(
@@ -869,11 +931,7 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                                 SelectionContainer {
                                                     Text(
                                                         modifier = Modifier
-                                                            .border(
-                                                                1.dp,
-                                                                Color.Gray,
-                                                                shape = RoundedCornerShape(8.dp)
-                                                            )
+                                                            .border(1.dp, Color.Gray, shape = RoundedCornerShape(8.dp))
                                                             .padding(8.dp),
                                                         text = item.text,
                                                         textAlign = textAlign,
@@ -882,10 +940,19 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                             }
                                             if (item.speaker == MobileViewModel.ConversationSpeaker.Remote) {
                                                 Spacer(modifier = Modifier.width(8.dp))
-                                                Icon(
-                                                    painterResource(id = avatarResId),
-                                                    contentDescription = "Remote",
-                                                )
+                                                Box(
+                                                    modifier = Modifier
+                                                        .offset { IntOffset(0, avatarOffsetY) },
+                                                    contentAlignment = Alignment.TopCenter
+                                                ) {
+                                                    Icon(
+                                                        modifier = Modifier.onGloballyPositioned { coordinates ->
+                                                            avatarHeight = coordinates.size.height
+                                                        },
+                                                        painter = painterResource(id = avatarResId),
+                                                        contentDescription = "Remote",
+                                                    )
+                                                }
                                             }
                                         }
                                     }
