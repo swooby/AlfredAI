@@ -1,6 +1,8 @@
 package com.swooby.alfredai.openai.realtime
 
 import android.content.Context
+import android.os.SystemClock
+import androidx.annotation.WorkerThread
 import com.openai.apis.RealtimeApi
 import com.openai.infrastructure.ApiClient
 import com.openai.infrastructure.ClientException
@@ -10,6 +12,7 @@ import com.openai.infrastructure.RequestMethod
 import com.openai.infrastructure.Serializer
 import com.openai.infrastructure.Success
 import com.openai.models.RealtimeClientEventConversationItemCreate
+import com.openai.models.RealtimeClientEventConversationItemTruncate
 import com.openai.models.RealtimeClientEventInputAudioBufferClear
 import com.openai.models.RealtimeClientEventInputAudioBufferCommit
 import com.openai.models.RealtimeClientEventResponseCancel
@@ -50,6 +53,7 @@ import com.openai.models.RealtimeSessionCreateResponse
 import com.openai.models.RealtimeSessionModel
 import com.swooby.alfredai.Utils.extractValue
 import com.swooby.alfredai.Utils.quote
+import com.swooby.alfredai.Utils.redact
 import com.swooby.alfredai.common.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -61,6 +65,8 @@ import okhttp3.logging.HttpLoggingInterceptor
 import org.webrtc.AudioTrack
 import org.webrtc.DataChannel
 import org.webrtc.IceCandidate
+import org.webrtc.Logging
+import org.webrtc.Logging.Severity
 import org.webrtc.MediaConstraints
 import org.webrtc.MediaStream
 import org.webrtc.PeerConnection
@@ -69,7 +75,6 @@ import org.webrtc.RtpReceiver
 import org.webrtc.RtpSender
 import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
-import org.webrtc.audio.AudioDeviceModule
 import org.webrtc.audio.JavaAudioDeviceModule
 import java.net.UnknownHostException
 import java.nio.ByteBuffer
@@ -86,9 +91,21 @@ class RealtimeClient(private val applicationContext: Context,
                      private val dangerousApiKey: String,
                      private var sessionConfig: RealtimeSessionCreateRequest,
                      httpClient: OkHttpClient = ApiClient.defaultClient,
-                     private val debug:Boolean = false) {
+                     private val debug: Boolean = false) {
     companion object {
         private val log = RealtimeLog(RealtimeClient::class)
+
+        @Suppress(
+            "SimplifyBooleanWithConstants",
+            "KotlinConstantConditions",
+        )
+        private val debugDataChannelBinary = BuildConfig.DEBUG && false
+
+        @Suppress(
+            "SimplifyBooleanWithConstants",
+            "KotlinConstantConditions",
+        )
+        private val debugDataChannelText = BuildConfig.DEBUG && false
 
         @Suppress(
             "SimplifyBooleanWithConstants",
@@ -112,8 +129,7 @@ class RealtimeClient(private val applicationContext: Context,
     private var localAudioTrackMicrophoneSender: RtpSender? = null
     private val remoteAudioTracks = mutableListOf<AudioTrack>()
     var isCancelingResponse: Boolean = false
-        get() = field
-        private set(value) { field = value }
+        private set
     private var dataChannel: DataChannel? = null
     private var dataChannelOpened = false
 
@@ -183,257 +199,335 @@ class RealtimeClient(private val applicationContext: Context,
         }
     }
 
+    private var connectStartMillis: Long = 0L
+    private var connectIntervalMillis: Long = 0L
+
+    /**
+     * @return true if still isConnectingOrConnected, false if canceled
+     */
+    private fun verifyStillConnectingOrConnected(stageName: String): Boolean {
+        val uptimeMillis = SystemClock.uptimeMillis()
+        val elapsedMillis = uptimeMillis - connectIntervalMillis
+        connectIntervalMillis = uptimeMillis
+        log.d("verifyStillConnectingOrConnected: isConnectingOrConnected=$isConnectingOrConnected")
+        log.i("verifyStillConnectingOrConnected: TIMING_CONNECT $stageName elapsedMillis=${elapsedMillis}ms")
+        if (isConnectingOrConnected) return true
+        log.w("No longer connecting or connected; cleaning up...")
+        disconnect()
+        return false
+    }
+
+    @WorkerThread
     fun connect(): String? {
-        log.d("+connect()")
-        if (isConnected) {
-            throw IllegalStateException("RealtimeAPI is already connected")
-        }
-
-        isConnectingOrConnected = true
-
-        // Set accessToken to our real [ergo, "dangerous"] API key
-        ApiClient.accessToken = dangerousApiKey
-
-        /*
-         * https://platform.openai.com/docs/guides/realtime-webrtc#creating-an-ephemeral-token
-         * https://platform.openai.com/docs/api-reference/realtime-sessions/create
-         */
-        val realtimeSessionCreateResponse: RealtimeSessionCreateResponse? = try {
-            if (debugInduceMysteriousUnknownHostException) {
-                throw UnknownHostException(MYSTERIOUS_UNKNOWN_HOST_EXCEPTION_MESSAGE)
+        var ephemeralApiKey: String? = null
+        try {
+            log.d("+connect()")
+            if (isConnected) {
+                throw IllegalStateException("RealtimeAPI is already connected")
             }
-            realtime.createRealtimeSession(sessionConfig)
-        } catch (exception: Exception) {
-            log.e("connect: exception=$exception")
-            notifyError(exception)
-            disconnect()
-            null
-        }
-        val ephemeralApiKey = realtimeSessionCreateResponse?.clientSecret?.value
-        log.d("connect: ephemeralApiKey=$ephemeralApiKey")
-        if (ephemeralApiKey == null) {
-            notifyError(ClientException("No Ephemeral API Key In Response"))
-            disconnect()
-            return null
-        }
 
-        // Set accessToken to the response's safer (1 minute TTL) ephemeralApiKey;
-        // clear it after requestOpenAiRealtimeSdp (success or fail)
-        ApiClient.accessToken = ephemeralApiKey
+            connectStartMillis = SystemClock.uptimeMillis()
+            connectIntervalMillis = connectStartMillis
 
-        val adm: AudioDeviceModule = JavaAudioDeviceModule.builder(applicationContext)
-            .setUseHardwareAcousticEchoCanceler(true)
-            .setUseHardwareNoiseSuppressor(true)
-            .createAudioDeviceModule()
+            isConnectingOrConnected = true
 
-        PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions
-            .builder(applicationContext)
-            .also { builder ->
-                if (debug) {
-                    builder
-                        .setEnableInternalTracer(true)
-                        .setFieldTrials("WebRTC-LogLevel/Warning/")
-                } else {
-                    builder
-                        .setEnableInternalTracer(false)
+            // Set accessToken to our real [ergo, "dangerous"] API key
+            ApiClient.accessToken = dangerousApiKey
+
+            /*
+             * https://platform.openai.com/docs/guides/realtime-webrtc#creating-an-ephemeral-token
+             * https://platform.openai.com/docs/api-reference/realtime-sessions/create
+             */
+            val realtimeSessionCreateResponse: RealtimeSessionCreateResponse? = try {
+                if (debugInduceMysteriousUnknownHostException) {
+                    throw UnknownHostException(MYSTERIOUS_UNKNOWN_HOST_EXCEPTION_MESSAGE)
                 }
+                realtime.createRealtimeSession(sessionConfig)
+            } catch (exception: Exception) {
+                log.e("connect: exception=$exception")
+                notifyError(exception)
+                disconnect()
+                null
             }
-            .createInitializationOptions())
-        val peerConnectionFactory = PeerConnectionFactory
-            .builder()
-            .setOptions(PeerConnectionFactory.Options())
-            .setAudioDeviceModule(adm)
-            .createPeerConnectionFactory()
-        // ICE/STUN is not needed to talk to *server* (only needed for peer-to-peer)
-        val iceServers = listOf<PeerConnection.IceServer>()
-        val rtcConfig = PeerConnection.RTCConfiguration(iceServers)
+            ephemeralApiKey = realtimeSessionCreateResponse?.clientSecret?.value
+            log.d("connect: ephemeralApiKey=${quote(redact(ephemeralApiKey))}")
+            if (ephemeralApiKey == null) {
+                notifyError(ClientException("No Ephemeral API Key In Response"))
+                disconnect()
+                return null
+            }
 
-        val logPc = RealtimeLog(PeerConnection::class)
-        peerConnection = peerConnectionFactory.createPeerConnection(
-            rtcConfig,
-            object : PeerConnection.Observer {
-                override fun onSignalingChange(newState: PeerConnection.SignalingState) {
-                    logPc.d("onSignalingChange($newState)")
-                }
-                override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState) {
-                    logPc.d("onIceConnectionChange($newState)")
-                    when (newState) {
-                        PeerConnection.IceConnectionState.CONNECTED -> {
-                            isConnected = true
+            if (!verifyStillConnectingOrConnected("createRealtimeSession")) {
+                ephemeralApiKey = null
+                return null
+            }
+
+            // Set accessToken to the response's safer (1 minute TTL) ephemeralApiKey;
+            // clear it after requestOpenAiRealtimeSdp (success or fail)
+            ApiClient.accessToken = ephemeralApiKey
+
+            val audioDeviceModule = JavaAudioDeviceModule.builder(applicationContext)
+                .setUseHardwareAcousticEchoCanceler(true)
+                .setUseHardwareNoiseSuppressor(true)
+                .createAudioDeviceModule()
+
+            PeerConnectionFactory.initialize(
+                PeerConnectionFactory.InitializationOptions
+                    .builder(applicationContext).apply {
+                        if (debug) {
+                            setEnableInternalTracer(true)
+                            setFieldTrials("WebRTC-LogLevel/Warning/")
+                        } else {
+                            setEnableInternalTracer(false)
                         }
-                        PeerConnection.IceConnectionState.DISCONNECTED,
-                        PeerConnection.IceConnectionState.FAILED,
-                        PeerConnection.IceConnectionState.CLOSED -> {
-                            disconnect()
+                    }
+                    .createInitializationOptions()
+            )
+            if (!debug) {
+                Logging.enableLogToDebugOutput(Severity.LS_NONE)
+            }
+            val peerConnectionFactory = PeerConnectionFactory
+                .builder()
+                .setOptions(PeerConnectionFactory.Options())
+                .setAudioDeviceModule(audioDeviceModule)
+                .createPeerConnectionFactory()
+            // ICE/STUN is not needed to talk to *server* (only needed for peer-to-peer)
+            val iceServers = listOf<PeerConnection.IceServer>()
+            val rtcConfig = PeerConnection.RTCConfiguration(iceServers)
+
+            if (!verifyStillConnectingOrConnected("peerConnectionFactory")) {
+                ephemeralApiKey = null
+                return null
+            }
+
+            val logPc = RealtimeLog(PeerConnection::class)
+            peerConnection = peerConnectionFactory.createPeerConnection(
+                rtcConfig,
+                object : PeerConnection.Observer {
+                    override fun onSignalingChange(newState: PeerConnection.SignalingState) {
+                        logPc.d("onSignalingChange($newState)")
+                    }
+
+                    override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState) {
+                        logPc.d("onIceConnectionChange($newState)")
+                        when (newState) {
+                            PeerConnection.IceConnectionState.CONNECTED -> {
+                                if (!verifyStillConnectingOrConnected("onIceConnectionChange: CONNECTED")) {
+                                    return
+                                }
+                            }
+
+                            PeerConnection.IceConnectionState.DISCONNECTED,
+                            PeerConnection.IceConnectionState.FAILED,
+                            PeerConnection.IceConnectionState.CLOSED -> {
+                                disconnect()
+                            }
+
+                            else -> {}
                         }
-                        else -> {}
+                    }
+
+                    override fun onIceConnectionReceivingChange(receiving: Boolean) {
+                        logPc.d("onIceConnectionReceivingChange($receiving)")
+                    }
+
+                    override fun onIceGatheringChange(newState: PeerConnection.IceGatheringState) {
+                        logPc.d("onIceGatheringChange($newState)")
+                    }
+
+                    override fun onIceCandidate(candidate: IceCandidate) {
+                        logPc.d("onIceCandidate(candidate=\"$candidate\")")
+                        // Typically you'd send new ICE candidates to the remote peer
+                    }
+
+                    override fun onIceCandidatesRemoved(candidates: Array<IceCandidate>) {
+                        logPc.d("onIceCandidatesRemoved($candidates)")
+                    }
+
+                    override fun onAddStream(stream: MediaStream) {
+                        logPc.d("onAddStream(${stream.id})")
+                    }
+
+                    override fun onRemoveStream(stream: MediaStream) {
+                        logPc.d("onRemoveStream(${stream.id})")
+                    }
+
+                    override fun onDataChannel(dc: DataChannel) {
+                        logPc.d("onDataChannel(${dc.label()})")
+                        // If the remote side creates a DataChannel, handle it here...
+                    }
+
+                    override fun onRenegotiationNeeded() {
+                        logPc.d("onRenegotiationNeeded()")
+                    }
+
+                    override fun onAddTrack(receiver: RtpReceiver, mediaStreams: Array<MediaStream>) {
+                        val track = receiver.track()
+                        logPc.d("onAddTrack(receiver={..., track=${track}, ...}, mediaStreams(${mediaStreams.size})=[...])")
+                        val trackKind = track?.kind()
+                        // Remote audio track arrives here
+                        // If you need to play it directly, you can attach it to an AudioTrack sink
+                        //...
+                        if (trackKind == "audio") {
+                            remoteAudioTracks.add(track as AudioTrack)
+
+                            // If you want to play it automatically, attach to an AudioSink here
+                            // e.g. track.addSink(myAudioSink)
+                        }
                     }
                 }
-                override fun onIceConnectionReceivingChange(receiving: Boolean) {
-                    logPc.d("onIceConnectionReceivingChange($receiving)")
-                }
-                override fun onIceGatheringChange(newState: PeerConnection.IceGatheringState) {
-                    logPc.d("onIceGatheringChange($newState)")
-                }
-                override fun onIceCandidate(candidate: IceCandidate) {
-                    logPc.d("onIceCandidate($candidate)")
-                    // Typically you'd send new ICE candidates to the remote peer
-                }
-                override fun onIceCandidatesRemoved(candidates: Array<IceCandidate>) {
-                    logPc.d("onIceCandidatesRemoved($candidates)")
-                }
-                override fun onAddStream(stream: MediaStream) {
-                    logPc.d("onAddStream(${stream.id})")
-                }
-                override fun onRemoveStream(stream: MediaStream) {
-                    logPc.d("onRemoveStream(${stream.id})")
-                }
-                override fun onDataChannel(dc: DataChannel) {
-                    logPc.d("onDataChannel(${dc.label()})")
-                    // If the remote side creates a DataChannel, handle it here...
-                }
-                override fun onRenegotiationNeeded() {
-                    logPc.d("onRenegotiationNeeded()")
-                }
-                override fun onAddTrack(receiver: RtpReceiver, mediaStreams: Array<MediaStream>) {
-                    val track = receiver.track()
-                    logPc.d("onAddTrack(receiver={..., track=${track}, ...}, mediaStreams(${mediaStreams.size})=[...])")
-                    val trackKind = track?.kind()
-                    // Remote audio track arrives here
-                    // If you need to play it directly, you can attach it to an AudioTrack sink
-                    //...
-                    if (trackKind == "audio") {
-                        remoteAudioTracks.add(track as AudioTrack)
+            ) ?: throw IllegalStateException("Failed to create PeerConnection")
 
-                        // If you want to play it automatically, attach to an AudioSink here
-                        // e.g. track.addSink(myAudioSink)
+            if (!verifyStillConnectingOrConnected("createPeerConnection")) {
+                ephemeralApiKey = null
+                return null
+            }
+
+            setLocalAudioMicrophone(peerConnectionFactory)
+
+            val dataChannelInit = DataChannel.Init()
+            val logDc = RealtimeLog(DataChannel::class)
+            dataChannel = peerConnection?.createDataChannel("oai-events", dataChannelInit)
+            dataChannel?.registerObserver(object : DataChannel.Observer {
+                override fun onBufferedAmountChange(previousAmount: Long) {
+                    logDc.d("onBufferedAmountChange($previousAmount)")
+                }
+
+                override fun onStateChange() {
+                    val dataChannel = dataChannel ?: return
+                    val state = dataChannel.state()
+                    logDc.d("onStateChange(): dataChannel.state()=$state")
+                    if (!dataChannelOpened && state == DataChannel.State.OPEN) {
+                        dataChannelOpened = true
+                        // Whether it is intentional or a bug, some settings like...
+                        // * `input_audio_transcription`
+                        // * `turn_detection`
+                        // ...don't take affect when creating a session:
+                        // https://platform.openai.com/docs/api-reference/realtime-sessions/create
+                        // https://platform.openai.com/docs/api-reference/realtime-sessions/create#realtime-sessions-create-input_audio_transcription
+                        // Proof is to enable okhttp logging and see a non-default value getting sent
+                        // in the Request but the default value coming back in the Response. :/
+                        // Forum post explaining:
+                        // https://community.openai.com/t/issues-with-transcription-in-realtime-model-using-webrtc/1068762/4
+                        //
+                        // So, this code re-applies the sessionConfig after the session and data channel are open.
+                        // There is a mention that specifying `model` during a session.update causes issues.
+                        //
+                        // https://platform.openai.com/docs/api-reference/realtime-client-events/session/update
+                        //
+                        dataSendSessionUpdate(sessionConfig)
                     }
                 }
-            }
-        ) ?: throw IllegalStateException("Failed to create PeerConnection")
 
-        setLocalAudioMicrophone(peerConnectionFactory)
-
-        val dataChannelInit = DataChannel.Init()
-        val logDc = RealtimeLog(DataChannel::class)
-        dataChannel = peerConnection?.createDataChannel("oai-events", dataChannelInit)
-        dataChannel?.registerObserver(object : DataChannel.Observer {
-            override fun onBufferedAmountChange(previousAmount: Long) {
-                logDc.d("onBufferedAmountChange($previousAmount)")
-            }
-            override fun onStateChange() {
-                val dataChannel = dataChannel ?: return
-                val state = dataChannel.state()
-                logDc.d("onStateChange(): dataChannel.state()=$state")
-                if (!dataChannelOpened && state == DataChannel.State.OPEN) {
-                    dataChannelOpened = true
-                    // Whether it is intentional or a bug, some settings like...
-                    // * `input_audio_transcription`
-                    // * `turn_detection`
-                    // ...don't take affect when creating a session:
-                    // https://platform.openai.com/docs/api-reference/realtime-sessions/create
-                    // https://platform.openai.com/docs/api-reference/realtime-sessions/create#realtime-sessions-create-input_audio_transcription
-                    // Proof is to enable okhttp logging and see a non-default value getting sent
-                    // in the Request but the default value coming back in the Response. :/
-                    // Forum post explaining:
-                    // https://community.openai.com/t/issues-with-transcription-in-realtime-model-using-webrtc/1068762/4
-                    //
-                    // So, this code re-applies the sessionConfig after the session and data channel are open.
-                    // There is a mention that specifying `model` during a session.update causes issues.
-                    //
-                    // https://platform.openai.com/docs/api-reference/realtime-client-events/session/update
-                    //
-                    dataSendSessionUpdate(sessionConfig)
-                }
-            }
-            override fun onMessage(buffer: DataChannel.Buffer) {
-                val dataByteBuffer = buffer.data
-                val bytes = ByteArray(dataByteBuffer.remaining())
-                dataByteBuffer.get(bytes)
-                if (buffer.binary) {
-                    onDataChannelBinary(bytes)
-                } else {
-                    val messageText = String(bytes, Charsets.UTF_8)
-                    onDataChannelText(messageText)
-                }
-            }
-        })
-
-        val offerConstraints = MediaConstraints().apply {
-            mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "false"))
-        }
-
-        peerConnection?.createOffer(object : SdpObserver {
-            override fun onCreateSuccess(desc: SessionDescription) {
-                logPc.d("createOffer onCreateSuccessLocal($desc)")
-                peerConnection?.setLocalDescription(object : SdpObserver {
-                    override fun onCreateSuccess(sdp: SessionDescription?) {
-                        logPc.d("localDescription onCreateSuccess($sdp)")
+                override fun onMessage(buffer: DataChannel.Buffer) {
+                    val dataByteBuffer = buffer.data
+                    val bytes = ByteArray(dataByteBuffer.remaining())
+                    dataByteBuffer.get(bytes)
+                    if (buffer.binary) {
+                        onDataChannelBinary(bytes)
+                    } else {
+                        val messageText = String(bytes, Charsets.UTF_8)
+                        onDataChannelText(messageText)
                     }
-                    override fun onSetSuccess() {
-                        logPc.d("localDescription setSuccess()")
-                        CoroutineScope(Dispatchers.IO).launch {
+                }
+            })
 
-                            val answerSdp = requestOpenAiRealtimeSdp(
-                                model = sessionConfig.model,
-                                ephemeralApiKey = ephemeralApiKey,
-                                offerSdp = desc.description
-                            )
+            val offerConstraints = MediaConstraints().apply {
+                mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
+                mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "false"))
+            }
 
-                            // No longer used after sdp request (pass or fail).
-                            // NOTE that the current session is limited to a maximum of 30 minutes.
-                            // https://platform.openai.com/docs/guides/realtime-model-capabilities#session-lifecycle-events
-                            // "The maximum duration of a Realtime session is 30 minutes."
-                            ApiClient.accessToken = null
+            if (!verifyStillConnectingOrConnected("createDataChannel/registerObserver")) {
+                ephemeralApiKey = null
+                return null
+            }
 
-                            withContext(Dispatchers.Main) {
-                                val answerDescription = SessionDescription(
-                                    SessionDescription.Type.ANSWER,
-                                    answerSdp
+            peerConnection?.createOffer(object : SdpObserver {
+                override fun onCreateSuccess(desc: SessionDescription) {
+                    logPc.d("createOffer onCreateSuccessLocal($desc)")
+                    peerConnection?.setLocalDescription(object : SdpObserver {
+                        override fun onCreateSuccess(sdp: SessionDescription?) {
+                            logPc.d("localDescription onCreateSuccess($sdp)")
+                        }
+
+                        override fun onSetSuccess() {
+                            logPc.d("localDescription setSuccess()")
+                            CoroutineScope(Dispatchers.IO).launch {
+
+                                val answerSdp = requestOpenAiRealtimeSdp(
+                                    model = sessionConfig.model,
+                                    ephemeralApiKey = ephemeralApiKey!!,
+                                    offerSdp = desc.description
                                 )
-                                peerConnection?.setRemoteDescription(object : SdpObserver {
-                                    override fun onCreateSuccess(sdp: SessionDescription?) {
-                                        logPc.d("remoteDescription onCreateSuccess($sdp)")
-                                    }
-                                    override fun onSetSuccess() {
-                                        logPc.d("remoteDescription setSuccess()")
-                                    }
-                                    override fun onCreateFailure(error: String?) {
-                                        logPc.e("remoteDescription onCreateFailure($error)")
-                                    }
-                                    override fun onSetFailure(error: String) {
-                                        logPc.e("remoteDescription onSetFailure($error)")
-                                    }
-                                }, answerDescription)
+
+                                // No longer used after sdp request (pass or fail).
+                                // NOTE that the current session is limited to a maximum of 30 minutes.
+                                // https://platform.openai.com/docs/guides/realtime-model-capabilities#session-lifecycle-events
+                                // "The maximum duration of a Realtime session is 30 minutes."
+                                ApiClient.accessToken = null
+
+                                withContext(Dispatchers.Main) {
+                                    val answerDescription = SessionDescription(
+                                        SessionDescription.Type.ANSWER,
+                                        answerSdp
+                                    )
+                                    peerConnection?.setRemoteDescription(object : SdpObserver {
+                                        override fun onCreateSuccess(sdp: SessionDescription?) {
+                                            logPc.d("remoteDescription onCreateSuccess($sdp)")
+                                        }
+
+                                        override fun onSetSuccess() {
+                                            logPc.d("remoteDescription setSuccess()")
+                                        }
+
+                                        override fun onCreateFailure(error: String?) {
+                                            logPc.e("remoteDescription onCreateFailure($error)")
+                                        }
+
+                                        override fun onSetFailure(error: String) {
+                                            logPc.e("remoteDescription onSetFailure($error)")
+                                        }
+                                    }, answerDescription)
+                                }
                             }
                         }
-                    }
-                    override fun onCreateFailure(error: String?) {
-                        logPc.e("localDescription onCreateFailure($error)")
-                    }
-                    override fun onSetFailure(error: String) {
-                        logPc.e("localDescription onSetFailure($error)")
-                    }
-                }, desc)
-            }
-            override fun onSetSuccess() {
-                logPc.d("createOffer setSuccess()")
-            }
-            override fun onCreateFailure(error: String) {
-                logPc.e("createOffer onCreateFailure($error)")
-            }
-            override fun onSetFailure(error: String?) {
-                logPc.e("createOffer onSetFailure($error)")
-            }
-        }, offerConstraints)
 
-        log.d("-connect()")//; ephemeralApiKey=$ephemeralApiKey")
+                        override fun onCreateFailure(error: String?) {
+                            logPc.e("localDescription onCreateFailure($error)")
+                        }
+
+                        override fun onSetFailure(error: String) {
+                            logPc.e("localDescription onSetFailure($error)")
+                        }
+                    }, desc)
+                }
+
+                override fun onSetSuccess() {
+                    logPc.d("createOffer setSuccess()")
+                }
+
+                override fun onCreateFailure(error: String) {
+                    logPc.e("createOffer onCreateFailure($error)")
+                }
+
+                override fun onSetFailure(error: String?) {
+                    logPc.e("createOffer onSetFailure($error)")
+                }
+            }, offerConstraints)
+
+            if (!verifyStillConnectingOrConnected("createOffer")) {
+                ephemeralApiKey = null
+                return null
+            }
+        } finally {
+            log.d("-connect(); ephemeralApiKey=${quote(redact(ephemeralApiKey))}")
+        }
         return ephemeralApiKey
     }
 
     fun disconnect() {
         log.d("+disconnect()")
+
         ApiClient.accessToken = null
 
         isCancelingResponse = false
@@ -456,6 +550,7 @@ class RealtimeClient(private val applicationContext: Context,
             it.close()
         }
         dataChannelOpened = false
+
         log.d("-disconnect()")
     }
 
@@ -482,7 +577,7 @@ class RealtimeClient(private val applicationContext: Context,
      * Essentially unmute or mute the speaker
      */
     private fun setLocalAudioTrackSpeakerEnabled(enabled: Boolean) {
-        log.d("setLocalAudioTrackSpeakerEnabled($enabled)")
+        log.w("setLocalAudioTrackSpeakerEnabled($enabled)")
         remoteAudioTracks.forEach {
             it.setEnabled(enabled)
         }
@@ -527,8 +622,8 @@ class RealtimeClient(private val applicationContext: Context,
     private fun dataSend(bytes: ByteArray,
                          @Suppress("SameParameterValue")
                          binary: Boolean = true): Boolean {
-        if (!isConnected) {
-            throw IllegalStateException("not connected")
+        if (!dataChannelOpened) {
+            throw IllegalStateException("data channel not opened")
         }
         return dataChannel?.send(DataChannel.Buffer(ByteBuffer.wrap(bytes), binary)) ?: false
     }
@@ -581,6 +676,23 @@ class RealtimeClient(private val applicationContext: Context,
             setLocalAudioTrackSpeakerEnabled(false)
             isCancelingResponse = true
         }
+        return sending
+    }
+    /**
+     * https://platform.openai.com/docs/api-reference/realtime-client-events/conversation/item/truncate
+     * conversation.item.truncate
+     * "Send this event to truncate a previous assistant message’s audio."
+     * To see it in use:
+     * https://youtu.be/mM8KhTxwPgs?t=965
+     */
+    fun dataSendConversationItemTruncate(itemId: String, audioEndMs: Int): Boolean {
+        log.d("dataSendConversationItemTruncate(itemId=${quote(itemId)}, audioEndMs=$audioEndMs)")
+        val sending = dataSend(RealtimeClientEventConversationItemTruncate(
+            itemId = itemId,
+            contentIndex = 0,
+            audioEndMs = audioEndMs,
+            eventId = RealtimeUtils.generateId(),
+        ))
         return sending
     }
 
@@ -657,7 +769,9 @@ class RealtimeClient(private val applicationContext: Context,
         fun onServerEventInputAudioBufferCommitted(realtimeServerEventInputAudioBufferCommitted: RealtimeServerEventInputAudioBufferCommitted)
         fun onServerEventInputAudioBufferSpeechStarted(realtimeServerEventInputAudioBufferSpeechStarted: RealtimeServerEventInputAudioBufferSpeechStarted)
         fun onServerEventInputAudioBufferSpeechStopped(realtimeServerEventInputAudioBufferSpeechStopped: RealtimeServerEventInputAudioBufferSpeechStopped)
-        fun onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped: ServerEventOutputAudioBufferAudioStopped)
+        fun onServerEventOutputAudioBufferAudioStarted(realtimeServerEventOutputAudioBufferAudioStarted: ServerEventOutputAudioBufferAudioStarted)
+        fun onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped: ServerEventOutputAudioBufferAudioStopped,
+        )
         fun onServerEventRateLimitsUpdated(realtimeServerEventRateLimitsUpdated: RealtimeServerEventRateLimitsUpdated)
         fun onServerEventResponseAudioDelta(realtimeServerEventResponseAudioDelta: RealtimeServerEventResponseAudioDelta)
         fun onServerEventResponseAudioDone(realtimeServerEventResponseAudioDone: RealtimeServerEventResponseAudioDone)
@@ -684,6 +798,7 @@ class RealtimeClient(private val applicationContext: Context,
         listeners.add(listener)
     }
 
+    @Suppress("unused")
     fun removeListener(listener: RealtimeClientListener) {
         listeners.remove(listener)
     }
@@ -714,8 +829,7 @@ class RealtimeClient(private val applicationContext: Context,
     }
 
     private fun onDataChannelBinary(data: ByteArray) {
-        @Suppress("SimplifyBooleanWithConstants", "KotlinConstantConditions")
-        if (debug && false) {
+        if (debug || debugDataChannelBinary) {
             log.d("onDataChannelBinary: data(${data.size} bytes BINARY)=[...]")
         }
         listeners.forEach {
@@ -724,8 +838,7 @@ class RealtimeClient(private val applicationContext: Context,
     }
 
     private fun onDataChannelText(message: String) {
-        @Suppress("SimplifyBooleanWithConstants", "KotlinConstantConditions")
-        if (debug && false) {
+        if (debug || debugDataChannelText) {
             log.d("onDataChannelText: message(${message.length} chars TEXT)=${quote(message)}")
         }
         listeners.forEach {
@@ -733,7 +846,9 @@ class RealtimeClient(private val applicationContext: Context,
         }
 
         val type = extractValue("type", message)
-        log.d("onDataChannelText: type=${quote(type)}")
+        if (debug || debugDataChannelText) {
+            log.d("onDataChannelText: type=${quote(type)}")
+        }
         // TODO: Consider using reflection to auto-populate the equivalent of the below code...
         when (type) {
             RealtimeServerEventConversationCreated.Type.conversationPeriodCreated.value -> {
@@ -876,13 +991,20 @@ class RealtimeClient(private val applicationContext: Context,
                     notifyServerEventSessionUpdated(it)
                 }
             }
+            "output_audio_buffer.audio_started" -> {
+                log.w("onDataChannelText: undocumented `output_audio_buffer.audio_started`")
+                Serializer.deserialize<ServerEventOutputAudioBufferAudioStarted>(message)?.also {
+                    notifyServerEventOutputAudioBufferAudioStarted(it)
+                }
+            }
             "output_audio_buffer.audio_stopped" -> {
                 log.w("onDataChannelText: undocumented `output_audio_buffer.audio_stopped`")
                 Serializer.deserialize<ServerEventOutputAudioBufferAudioStopped>(message)?.also {
                     notifyServerEventOutputAudioBufferAudioStopped(it)
                 }
             }
-            else -> log.w("onDataChannelText: unknown type=${quote(type)}")
+            else ->
+                log.e("onDataChannelText: unknown/undocumented type=${quote(type)}; message(${message.length} chars TEXT)=${quote(message)}")
         }
     }
 
@@ -904,25 +1026,19 @@ class RealtimeClient(private val applicationContext: Context,
         }
     }
 
-    private fun notifyServerEventConversationItemInputAudioTranscriptionCompleted(
-        realtimeServerEventConversationItemInputAudioTranscriptionCompleted: RealtimeServerEventConversationItemInputAudioTranscriptionCompleted
-    ) {
+    private fun notifyServerEventConversationItemInputAudioTranscriptionCompleted(realtimeServerEventConversationItemInputAudioTranscriptionCompleted: RealtimeServerEventConversationItemInputAudioTranscriptionCompleted) {
         listeners.forEach {
             it.onServerEventConversationItemInputAudioTranscriptionCompleted(realtimeServerEventConversationItemInputAudioTranscriptionCompleted)
         }
     }
 
-    private fun notifyServerEventConversationItemInputAudioTranscriptionFailed(
-        realtimeServerEventConversationItemInputAudioTranscriptionFailed: RealtimeServerEventConversationItemInputAudioTranscriptionFailed
-    ) {
+    private fun notifyServerEventConversationItemInputAudioTranscriptionFailed(realtimeServerEventConversationItemInputAudioTranscriptionFailed: RealtimeServerEventConversationItemInputAudioTranscriptionFailed) {
         listeners.forEach {
             it.onServerEventConversationItemInputAudioTranscriptionFailed(realtimeServerEventConversationItemInputAudioTranscriptionFailed)
         }
     }
 
-    private fun notifyServerEventConversationItemTruncated(
-        realtimeServerEventConversationItemTruncated: RealtimeServerEventConversationItemTruncated
-    ) {
+    private fun notifyServerEventConversationItemTruncated(realtimeServerEventConversationItemTruncated: RealtimeServerEventConversationItemTruncated) {
         listeners.forEach {
             it.onServerEventConversationItemTruncated(realtimeServerEventConversationItemTruncated)
         }
@@ -932,6 +1048,7 @@ class RealtimeClient(private val applicationContext: Context,
         val error = realtimeServerEventError.error
         if (error.code == "session_expired") {
             /*
+            log output:
             onServerEventError(
                 RealtimeServerEventError(
                     eventId=event_Au2On9AZVDzkdjCMStXVm,
@@ -962,25 +1079,19 @@ class RealtimeClient(private val applicationContext: Context,
         }
     }
 
-    private fun notifyServerEventInputAudioBufferCommitted(
-        realtimeServerEventInputAudioBufferCommitted: RealtimeServerEventInputAudioBufferCommitted
-    ) {
+    private fun notifyServerEventInputAudioBufferCommitted(realtimeServerEventInputAudioBufferCommitted: RealtimeServerEventInputAudioBufferCommitted) {
         listeners.forEach {
             it.onServerEventInputAudioBufferCommitted(realtimeServerEventInputAudioBufferCommitted)
         }
     }
 
-    private fun notifyServerEventInputAudioBufferSpeechStarted(
-        realtimeServerEventInputAudioBufferSpeechStarted: RealtimeServerEventInputAudioBufferSpeechStarted
-    ) {
+    private fun notifyServerEventInputAudioBufferSpeechStarted(realtimeServerEventInputAudioBufferSpeechStarted: RealtimeServerEventInputAudioBufferSpeechStarted) {
         listeners.forEach {
             it.onServerEventInputAudioBufferSpeechStarted(realtimeServerEventInputAudioBufferSpeechStarted)
         }
     }
 
-    private fun notifyServerEventInputAudioBufferSpeechStopped(
-        realtimeServerEventInputAudioBufferSpeechStopped: RealtimeServerEventInputAudioBufferSpeechStopped
-    ) {
+    private fun notifyServerEventInputAudioBufferSpeechStopped(realtimeServerEventInputAudioBufferSpeechStopped: RealtimeServerEventInputAudioBufferSpeechStopped) {
         listeners.forEach {
             it.onServerEventInputAudioBufferSpeechStopped(realtimeServerEventInputAudioBufferSpeechStopped)
         }
@@ -988,8 +1099,47 @@ class RealtimeClient(private val applicationContext: Context,
 
     /**
      * Example:
-     * `{"type":"output_audio_buffer.audio_stopped","event_id":"event_e69be18ad4f34b01","response_id":"resp_Asg4GBgYXDJXSLfXu6cWO"}`
+     * ```
+     * {
+     *   "type":"output_audio_buffer.audio_started",
+     *   "event_id":"event_51bb3e4b2b9a45b5",
+     *   "response_id":"resp_AvyUM8tYkYjvWaXhkqcBJ"
+     * }
+     * ```
      */
+    @Suppress("PropertyName")
+    data class ServerEventOutputAudioBufferAudioStarted(
+        /**
+         * The event type, must be "output_audio_buffer.audio_stopped".
+         */
+        val type: String,
+        /**
+         * The unique ID of the server event.
+         */
+        val event_id: String,
+        /**
+         * The ID of the response.
+         */
+        val response_id: String,
+    )
+
+    private fun notifyServerEventOutputAudioBufferAudioStarted(realtimeServerEventOutputAudioBufferAudioStarted: ServerEventOutputAudioBufferAudioStarted) {
+        listeners.forEach {
+            it.onServerEventOutputAudioBufferAudioStarted(realtimeServerEventOutputAudioBufferAudioStarted)
+        }
+    }
+
+    /**
+     * Example:
+     * ```
+     * {
+     *   "type":"output_audio_buffer.audio_stopped",
+     *   "event_id":"event_e69be18ad4f34b01",
+     *   "response_id":"resp_Asg4GBgYXDJXSLfXu6cWO"
+     * }
+     * ```
+     */
+    @Suppress("PropertyName")
     data class ServerEventOutputAudioBufferAudioStopped(
         /**
          * The event type, must be "output_audio_buffer.audio_stopped".
@@ -1009,15 +1159,17 @@ class RealtimeClient(private val applicationContext: Context,
         if (isCancelingResponse) {
             isCancelingResponse = false
             CoroutineScope(Dispatchers.IO).launch {
-                delay(200)
+                delay(200) // delay a bit to allow any already buffered audio to finish playing before unmuting
                 setLocalAudioTrackSpeakerEnabled(true)
                 listeners.forEach {
-                    it.onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped)
+                    it.onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped,
+                    )
                 }
             }
         } else {
             listeners.forEach {
-                it.onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped)
+                it.onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped,
+                )
             }
         }
     }
@@ -1123,6 +1275,10 @@ class RealtimeClient(private val applicationContext: Context,
     }
 
     private fun notifyServerEventSessionCreated(realtimeServerEventSessionCreated: RealtimeServerEventSessionCreated) {
+        val elapsedMillis = SystemClock.uptimeMillis() - connectStartMillis
+        log.i("notifyServerEventSessionCreated: CONNECTED! TIMING_CONNECT Connected in elapsedMillis=${elapsedMillis}ms")
+        isConnected = true
+
         listeners.forEach {
             it.onServerEventSessionCreated(realtimeServerEventSessionCreated)
         }

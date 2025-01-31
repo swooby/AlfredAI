@@ -42,6 +42,15 @@ object Utils {
         return value.toString()
     }
 
+    fun redact(input: String?, peekCount: Int = 3): String {
+        if (input.isNullOrBlank() || input.length <= 6 || input.length < (peekCount * 2 + 8)) {
+            return "{REDACTED}"
+        }
+        val firstThree = input.take(peekCount)
+        val lastThree = input.takeLast(peekCount)
+        return "$firstThree{REDACTED}$lastThree"
+    }
+
     fun extractValue(key: String, jsonString: String): String? {
         try {
             val reader = JsonReader(StringReader(jsonString))

@@ -15,8 +15,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -28,9 +26,31 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.swooby.alfredai.ui.theme.AlfredAITheme
 
+@Preview(
+    uiMode = Configuration.UI_MODE_NIGHT_NO,
+    showBackground = true
+)
+@Composable
+fun PushToTalkButtonPreviewLight() {
+    AlfredAITheme {
+        PushToTalkButton(MobileViewModelPreview())
+    }
+}
+
+@Preview(
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
+    showBackground = true
+)
+@Composable
+fun PushToTalkButtonPreviewDark() {
+    AlfredAITheme {
+        PushToTalkButton(MobileViewModelPreview())
+    }
+}
+
 @Composable
 fun PushToTalkButton(
-    mobileViewModel: MobileViewModel? = null,
+    mobileViewModel: MobileViewModelInterface,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
     iconIdle: Int = R.drawable.baseline_mic_24,
@@ -39,10 +59,7 @@ fun PushToTalkButton(
     onPushToTalkStart: () -> Unit = {},
     onPushToTalkStop: () -> Unit = {}
 ) {
-    val pttState by mobileViewModel
-        ?.pushToTalkState
-        ?.collectAsState()
-        ?: remember { mutableStateOf(SharedViewModel.PttState.Idle) }
+    val pttState by mobileViewModel.pushToTalkState.collectAsState()
 
     val disabledColor = MaterialTheme.colorScheme.onSurface.copy(alpha = ContentAlpha.disabled)
     val boxAlpha = if (enabled) 1.0f else 0.38f
@@ -101,27 +118,5 @@ fun PushToTalkButton(
             modifier = Modifier
                 .size(90.dp)
         )
-    }
-}
-
-@Preview(
-    uiMode = Configuration.UI_MODE_NIGHT_NO,
-    showBackground = true
-)
-@Composable
-fun PushToTalkButtonPreviewLight() {
-    AlfredAITheme {
-        PushToTalkButton()
-    }
-}
-
-@Preview(
-    uiMode = Configuration.UI_MODE_NIGHT_YES,
-    showBackground = true
-)
-@Composable
-fun PushToTalkButtonPreviewDark() {
-    AlfredAITheme {
-        PushToTalkButton()
     }
 }

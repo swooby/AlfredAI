@@ -1,5 +1,6 @@
 package com.swooby.alfredai
 
+import android.Manifest
 import android.app.Activity
 import android.app.Application
 import android.app.Notification
@@ -8,16 +9,27 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.media.AudioManager
+import android.media.MediaPlayer
+import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat.checkSelfPermission
 import androidx.lifecycle.viewModelScope
 import com.openai.infrastructure.ApiClient
 import com.openai.infrastructure.ClientError
 import com.openai.infrastructure.ClientException
+import com.openai.models.RealtimeResponse
+import com.openai.models.RealtimeResponseStatusDetails
 import com.openai.models.RealtimeServerEventConversationCreated
 import com.openai.models.RealtimeServerEventConversationItemCreated
 import com.openai.models.RealtimeServerEventConversationItemDeleted
@@ -51,15 +63,17 @@ import com.openai.models.RealtimeSessionCreateRequest
 import com.openai.models.RealtimeSessionInputAudioTranscription
 import com.openai.models.RealtimeSessionModel
 import com.openai.models.RealtimeSessionVoice
+import com.swooby.alfredai.AppUtils.showToast
 import com.swooby.alfredai.PushToTalkPreferences.Companion.getMaxResponseOutputTokens
 import com.swooby.alfredai.Utils.playAudioResourceOnce
 import com.swooby.alfredai.Utils.quote
+import com.swooby.alfredai.Utils.redact
 import com.swooby.alfredai.openai.realtime.RealtimeClient
 import com.swooby.alfredai.openai.realtime.RealtimeClient.RealtimeClientListener
 import com.swooby.alfredai.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
 import com.twilio.audioswitch.AudioDevice
 import com.twilio.audioswitch.AudioSwitch
-import kotlinx.coroutines.CoroutineScope
+import com.twilio.audioswitch.bluetooth.BluetoothHeadsetConnectionListener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -69,10 +83,12 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.math.BigDecimal
 import java.net.UnknownHostException
+import java.time.Duration
+import java.time.Instant
+import kotlin.random.Random
 
 class MobileViewModel(application: Application) :
-    SharedViewModel(application)
-{
+    SharedViewModel(application), MobileViewModelInterface {
     companion object {
         const val DEBUG = AlfredAiApp.DEBUG
 
@@ -85,7 +101,78 @@ class MobileViewModel(application: Application) :
             "SimplifyBooleanWithConstants",
             "KotlinConstantConditions",
         )
-        val debugSimulateSessionExpired = BuildConfig.DEBUG && false
+        val debugToastVerbose = BuildConfig.DEBUG && false
+
+        @Suppress(
+            "SimplifyBooleanWithConstants",
+            "KotlinConstantConditions",
+        )
+        val debugForceNotConfigured = BuildConfig.DEBUG && false
+
+        @Suppress(
+            "SimplifyBooleanWithConstants",
+            "KotlinConstantConditions",
+        )
+        val debugSimulateSessionExpiredMillis = if (BuildConfig.DEBUG && false) 20_000L else 0L
+
+        @Suppress(
+            "SimplifyBooleanWithConstants",
+            "KotlinConstantConditions",
+        )
+        val debugForceDoNotAutoConnect = BuildConfig.DEBUG && false
+
+        @Suppress(
+            "SimplifyBooleanWithConstants",
+            "KotlinConstantConditions",
+        )
+        val debugConnectDelayMillis = if (BuildConfig.DEBUG && false) 10_000L else 0L
+
+        @Suppress(
+            "SimplifyBooleanWithConstants",
+            "KotlinConstantConditions",
+        )
+        val debugLogConversation = BuildConfig.DEBUG && false
+
+        @Suppress(
+            "SimplifyBooleanWithConstants",
+            "KotlinConstantConditions",
+        )
+        val debugFakeConversationCount = if (BuildConfig.DEBUG && false) 20 else 0
+
+        internal fun generateRandomConversationItems(count: Int = 0): List<ConversationItem> {
+            require(count > 0) {
+                "count must be greater than 0"
+            }
+
+            val conversationItems = mutableListOf<ConversationItem>()
+
+            fun generateRandomSentence(maxWords: Int): String {
+                require(maxWords > 0) {
+                    "maxWords must be greater than 0"
+                }
+
+                val wordCount = Random.nextInt(1, maxWords + 1)
+                val words = List(wordCount) {
+                    val length = Random.nextInt(1, 11)
+                    (1..length)
+                        .map { ('a'..'z').random() }
+                        .joinToString("")
+                }
+                val sentence = words.joinToString(" ")
+                return sentence.replaceFirstChar { it.uppercase() } + "."
+            }
+
+            for (i in 0..20) {
+                conversationItems.add(
+                    ConversationItem(
+                        id = "$i",
+                        speaker = MobileViewModel.ConversationSpeaker.entries.random(),
+                        initialText = generateRandomSentence((5..30).random())
+                    )
+                )
+            }
+            return conversationItems
+        }
     }
 
     override val TAG: String
@@ -100,30 +187,13 @@ class MobileViewModel(application: Application) :
     override fun init() {
         super.init()
 
+        observeActivityLifecycles()
+
         createNotificationChannel()
 
-        audioSwitchStart()
+        observeConnectionState()
 
-        observeConnectionForServiceStartStop()
-
-        if (debugSimulateSessionExpired) {
-            jobDebugFakeSessionExpired = viewModelScope.launch {
-                delay(20_000L) // Delay for 20 seconds...
-                // Create a fake RealtimeServerEventError
-                val fakeError = RealtimeServerEventError(
-                    eventId = "fake-event-id",
-                    type = RealtimeServerEventError.Type.error,
-                    error = RealtimeServerEventErrorError(
-                        type = "invalid_request_error",
-                        message = "Your session hit the maximum duration of 30 minutes.",
-                        code = "session_expired",
-                    )
-                )
-                listener.onServerEventSessionExpired(fakeError)
-                Log.d(TAG, "Debug: Fake session expired event triggered.")
-                disconnect()
-            }
-        }
+        updatePermissionsState()
     }
 
     override fun close() {
@@ -134,44 +204,88 @@ class MobileViewModel(application: Application) :
         audioSwitchStop()
     }
 
-    fun disconnect() {
-        if (realtimeClient?.isConnected == true) {
-            realtimeClient?.disconnect()
-        }
-    }
-
-    /**
-     * Called by listener.onDisconnected()
-     */
-    private fun onDisconnecting() {
-        if (jobDebugFakeSessionExpired?.isActive == true) {
-            jobDebugFakeSessionExpired?.cancel()
-        }
-        _connectionStateFlow.value = ConnectionState.Disconnected
-    }
-
-    /**
-     * Called by listener.onDisconnected()
-     */
-    private fun onDisconnected() {
-        audioSwitch.deactivate()
-    }
-
     //
     //region In-Use-Activities Detection
     //
 
     private val inUseActivities = mutableSetOf<Activity>()
 
+    /**
+     * Returns true if no Activities have reported onStart or onResume.
+     * Often used to determine if a Notification or Toast should be shown or not.
+     */
     private val hasNoInUseActivities: Boolean
         get() = inUseActivities.isEmpty()
 
-    fun onStartOrResume(activity: Activity) {
-        inUseActivities.add(activity)
+    private fun observeActivityLifecycles() {
+        val application: Application = getApplication()
+        application.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
+                Log.d(TAG, "observeActivityLifecycles: Activity ${activity.localClassName} - Created")
+            }
+
+            override fun onActivityStarted(activity: Activity) {
+                Log.d(TAG, "observeActivityLifecycles: Activity ${activity.localClassName} - Started")
+                inUseActivities.add(activity)
+            }
+
+            override fun onActivityResumed(activity: Activity) {
+                Log.d(TAG, "observeActivityLifecycles: Activity ${activity.localClassName} - Resumed")
+            }
+
+            override fun onActivityPaused(activity: Activity) {
+                Log.d(TAG, "observeActivityLifecycles: Activity ${activity.localClassName} - Paused")
+            }
+
+            override fun onActivityStopped(activity: Activity) {
+                Log.d(TAG, "observeActivityLifecycles: Activity ${activity.localClassName} - Stopped")
+                inUseActivities.remove(activity)
+            }
+
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {
+                Log.d(TAG, "observeActivityLifecycles: Activity ${activity.localClassName} - SaveInstanceState")
+            }
+
+            override fun onActivityDestroyed(activity: Activity) {
+                Log.d(TAG, "observeActivityLifecycles: Activity ${activity.localClassName} - Destroyed")
+            }
+        })
     }
 
-    fun onPauseOrStop(activity: Activity) {
-        inUseActivities.remove(activity)
+    //
+    //endregion
+    //
+
+    //
+    //region Permissions
+    //
+
+    override val requiredPermissions = arrayOf(
+        Manifest.permission.RECORD_AUDIO,
+        /*
+        NOTE: As of Android 12 (API 31), BLUETOOTH* no longer absolutely requires LOCATION permission per:
+        https://developer.android.com/about/versions/12/summary
+        https://developer.android.com/about/versions/12/behavior-changes-12
+        https://developer.android.com/develop/connectivity/bluetooth/bt-permissions
+        https://developer.android.com/develop/connectivity/bluetooth/bt-permissions#declare-android12-or-higher
+         */
+        Manifest.permission.BLUETOOTH_CONNECT,
+        Manifest.permission.BLUETOOTH_SCAN,
+        Manifest.permission.POST_NOTIFICATIONS,
+        Manifest.permission.FOREGROUND_SERVICE,
+        MobileForegroundService.FOREGROUND_SERVICE_PERMISSION,
+    )
+
+    private fun checkHasAllRequiredPermissions(): Boolean {
+        return requiredPermissions.all {
+            checkSelfPermission(getApplication(), it) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+    private val _hasAllRequiredPermissions = MutableStateFlow(checkHasAllRequiredPermissions())
+    override val hasAllRequiredPermissions = _hasAllRequiredPermissions.asStateFlow()
+    override fun updatePermissionsState() {
+        _hasAllRequiredPermissions.value = checkHasAllRequiredPermissions()
+        maybeAutoConnect()
     }
 
     //
@@ -185,28 +299,37 @@ class MobileViewModel(application: Application) :
     private val prefs = PushToTalkPreferences(application)
 
     private var _autoConnect = MutableStateFlow(prefs.autoConnect)
-    var autoConnect = _autoConnect.asStateFlow()
+    override val autoConnect = _autoConnect.asStateFlow()
 
     private var _apiKey = MutableStateFlow(prefs.apiKey)
-    val apiKey = _apiKey.asStateFlow()
+    override val apiKey = _apiKey.asStateFlow()
 
     private var _model = MutableStateFlow(prefs.model)
-    val model = _model.asStateFlow()
+    override val model = _model.asStateFlow()
 
     private var _instructions = MutableStateFlow(prefs.instructions)
-    val instructions = _instructions.asStateFlow()
+    override val instructions = _instructions.asStateFlow()
 
     private var _voice = MutableStateFlow(prefs.voice)
-    val voice = _voice.asStateFlow()
+    override val voice = _voice.asStateFlow()
 
     private var _inputAudioTranscription = MutableStateFlow(prefs.inputAudioTranscription)
-    val inputAudioTranscription = _inputAudioTranscription.asStateFlow()
+    override val inputAudioTranscription = _inputAudioTranscription.asStateFlow()
 
     private var _temperature = MutableStateFlow(prefs.temperature)
-    val temperature = _temperature.asStateFlow()
+    override val temperature = _temperature.asStateFlow()
 
     private var _maxResponseOutputTokens = MutableStateFlow(prefs.maxResponseOutputTokens)
-    val maxResponseOutputTokens = _maxResponseOutputTokens.asStateFlow()
+    override val maxResponseOutputTokens = _maxResponseOutputTokens.asStateFlow()
+
+    private fun checkIsConfigured(): Boolean {
+        return !debugForceNotConfigured && apiKey.value.isNotBlank()
+    }
+    private var _isConfigured = MutableStateFlow(checkIsConfigured())
+    override val isConfigured = _isConfigured.asStateFlow()
+    private fun updateIsConfiguredState() {
+        _isConfigured.value = checkIsConfigured()
+    }
 
     private val sessionConfig: RealtimeSessionCreateRequest
         get() {
@@ -226,7 +349,7 @@ class MobileViewModel(application: Application) :
             )
         }
 
-    fun updatePreferences(
+    override fun updatePreferences(
         autoConnect: Boolean,
         apiKey: String,
         model: RealtimeSessionModel,
@@ -235,15 +358,16 @@ class MobileViewModel(application: Application) :
         inputAudioTranscription: RealtimeSessionInputAudioTranscription?,
         temperature: Float,
         maxResponseOutputTokens: Int,
-    ): Job? {
+    ) {
         prefs.autoConnect = autoConnect
         _autoConnect.value = autoConnect
 
-        var reconnectSession = false
+        var reinitialize = realtimeClient == null
         var updateSession = false
+        var reconnectSession = false
 
         if (apiKey != this.apiKey.value) {
-            reconnectSession = true
+            reinitialize = true
             prefs.apiKey = apiKey
             _apiKey.value = apiKey
         }
@@ -290,79 +414,258 @@ class MobileViewModel(application: Application) :
             _maxResponseOutputTokens.value = maxResponseOutputTokens
         }
 
-        var jobReconnect: Job? = null
+        updateIsConfiguredState()
 
-        if (realtimeClient == null) {
+        if (reinitialize) {
             tryInitializeRealtimeClient()
         } else {
-            if (isConnectingOrConnected) {
-                if (isConnecting || reconnectSession) {
-                    _realtimeClient?.disconnect()
-                    jobReconnect = CoroutineScope(Dispatchers.IO).launch {
-                        _realtimeClient?.connect()
-                    }
+            if (isConnectingOrConnected.value) {
+                if (isConnecting.value || reconnectSession) {
+                    reconnect()
                 } else {
-                    if (isConnected && updateSession) {
+                    if (isConnected.value && updateSession) {
                         realtimeClient?.dataSendSessionUpdate(sessionConfig)
                     }
                 }
             }
         }
-
-        return jobReconnect
     }
-
-    val isConfigured: Boolean
-        get() = apiKey.value.isNotBlank()
 
     //
     //endregion
     //
 
-    private var _realtimeClient: RealtimeClient? = null
-    val realtimeClient: RealtimeClient?
-        get() {
-            if (_realtimeClient == null) {
-                tryInitializeRealtimeClient()
-            }
-            return _realtimeClient
-        }
+    //
+    //region Connection
+    //
 
-    val isConnectingOrConnected: Boolean
-        get() = realtimeClient?.isConnectingOrConnected ?: false
+    private val _connectionState = MutableStateFlow(ConnectionState.Disconnected)
+    private val connectionStateFlowProvider = ConnectionStateFlowProvider(
+        connectionState = _connectionState,
+        scope = viewModelScope,
+    )
+    override val connectionState = connectionStateFlowProvider.connectionState
+    override val isConnecting = connectionStateFlowProvider.isConnecting
+    override val isConnected = connectionStateFlowProvider.isConnected
+    override val isConnectingOrConnected = connectionStateFlowProvider.isConnectingOrConnected
+    override val isDisconnecting = connectionStateFlowProvider.isDisconnecting
+    override val isDisconnected = connectionStateFlowProvider.isDisconnected
+    override val isDisconnectingOrDisconnected = connectionStateFlowProvider.isDisconnectingOrDisconnected
 
-    val isConnected: Boolean
-        get() = realtimeClient?.isConnected ?: false
+    private var isDisconnectManual = false
 
-    private val isConnecting: Boolean
-        get() = realtimeClient?.isConnecting ?: false
+    private var realtimeClient: RealtimeClient? = null
 
     private fun tryInitializeRealtimeClient(): Boolean {
-        if (!isConfigured) {
+        if (!hasAllRequiredPermissions.value) {
+            Log.w(TAG, "tryInitializeRealtimeClient: Not all permissions not granted; not initializing realtimeClient")
             return false
         }
 
-        _realtimeClient?.disconnect()
+        audioSwitchStart()
+
+        if (!isConfigured.value) {
+            Log.w(TAG, "tryInitializeRealtimeClient: Not configured; not initializing realtimeClient")
+            return false
+        }
+
+        disconnectInternal()
 
         val httpClient = if (DEBUG)
             RealtimeClient.httpLoggingClient
         else
             ApiClient.defaultClient
 
-        _realtimeClient = RealtimeClient(
+        realtimeClient = RealtimeClient(
             applicationContext = getApplication(),
             dangerousApiKey = prefs.apiKey,
             sessionConfig = sessionConfig,
             httpClient = httpClient,
             debug = DEBUG
         )
-        _realtimeClient?.addListener(listener)
+        realtimeClient?.addListener(listener)
 
+        Log.d(TAG, "tryInitializeRealtimeClient: realtimeClient initialized successfully")
         return true
     }
 
+    private fun maybeAutoConnect() {
+        Log.d(TAG, "maybeAutoConnect()")
+
+        if (debugForceDoNotAutoConnect) {
+            Log.w(TAG, "maybeAutoConnect: Auto-connect is [debug] forced disabled")
+            return
+        }
+
+        if (!autoConnect.value) {
+            Log.d(TAG, "maybeAutoConnect: Auto-connect is disabled")
+            return
+        }
+
+        if (isDisconnectManual) {
+            Log.d(TAG, "maybeAutoConnect: Manually disconnected; Ignore auto-connect")
+            return
+        }
+
+        connect()
+    }
+
+    private var jobConnect: Job? = null
+
+    override fun connect() {
+        try {
+            Log.d(TAG, "+connect()")
+
+            if (isConnectingOrConnected.value) {
+                Log.d(TAG, "connect: Already connecting or connected")
+                return
+            }
+
+            if (realtimeClient == null && !tryInitializeRealtimeClient()) {
+                Log.w(TAG, "connect: tryInitializeRealtimeClient() return false; not connecting")
+                return
+            }
+
+            isDisconnectManual = false
+
+            _connectionState.value = ConnectionState.Connecting
+
+            jobConnect?.cancel()
+            jobConnect = viewModelScope.launch(Dispatchers.IO) {
+                var ephemeralApiKey: String? = null
+                try {
+                    if (debugConnectDelayMillis > 0) {
+                        delay(debugConnectDelayMillis)
+                    }
+                    ephemeralApiKey = realtimeClient?.connect()
+                    Log.d(TAG, "ephemeralApiKey=${quote(redact(ephemeralApiKey))}")
+                    if (ephemeralApiKey == null) {
+                        Log.e(TAG, "Failed to obtain ephemeral API key")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Connection failed", e)
+                }
+                if (ephemeralApiKey != null) {
+                    realtimeClient?.setLocalAudioTrackMicrophoneEnabled(false)
+                } else {
+                    disconnect()
+                }
+            }
+        } finally {
+            Log.d(TAG, "-connect()")
+        }
+    }
+
+    override fun disconnect(isManual: Boolean) {
+        disconnect(isManual = isManual, isClient = false)
+    }
+
+    /**
+     * @param isManual true if the user stopped; will prevent auto-reconnecting
+     * @param isClient Prevents a realtimeClient disconnect from calling `realtimeClient.disconnect()`
+     */
+    private fun disconnect(isManual: Boolean = false, isClient: Boolean = false) {
+        try {
+            Log.d(TAG, "+disconnect(isClient=$isClient, isManual=$isManual)")
+
+            if (_connectionState.value == ConnectionState.Disconnected) {
+                Log.d(TAG, "disconnect: Already disconnected")
+                return
+            }
+
+            if (isManual) {
+                isDisconnectManual = true
+            }
+
+            jobConnect?.also {
+                Log.d(TAG, "disconnect: Canceling jobConnect...")
+                it.cancel()
+                jobConnect = null
+                Log.d(TAG, "disconnect: ...jobConnect canceled")
+            }
+
+            disconnectInternal(isClient)
+        } finally {
+            Log.d(TAG, "-disconnect(isClient=$isClient, isManual=$isManual)")
+        }
+    }
+
+    /**
+     * Common to both `tryInitializeRealtimeClient()` and `disconnect(...)`
+     * @param isClient Prevents a realtimeClient disconnect from calling `realtimeClient.disconnect()`
+     */
+    private fun disconnectInternal(isClient: Boolean = false) {
+        try {
+            Log.d(TAG, "+disconnectInternal(isClient=$isClient)")
+            _connectionState.value = ConnectionState.Disconnecting
+            if (isClient) {
+                Log.d(
+                    TAG,
+                    "disconnectInternal: Disconnect request **FROM RealtimeClient**; Intentionally **NOT** calling `realtimeClient.disconnect()`"
+                )
+            } else {
+                realtimeClient?.also {
+                    Log.d(TAG, "disconnectRealtimeClient: Disconnecting RealtimeClient...")
+                    try {
+                        it.disconnect()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "disconnectRealtimeClient: Disconnect failed", e)
+                    }
+                    Log.d(TAG, "disconnectRealtimeClient: ...RealtimeClient disconnected")
+                }
+            }
+            _connectionState.value = ConnectionState.Disconnected
+        } finally {
+            Log.d(TAG, "-disconnectInternal(isClient=$isClient)")
+        }
+    }
+
+    override fun reconnect() {
+        Log.d(TAG, "+reconnect()")
+        disconnect()
+        connect()
+        Log.d(TAG, "-reconnect()")
+    }
+
+    /**
+     * Called by listener.onDisconnected()
+     */
+    private fun onDisconnecting() {
+        Log.d(TAG, "+onDisconnecting()")
+        jobDebugFakeSessionExpired?.also {
+            Log.d(TAG, "onDisconnecting: Canceling jobDebugFakeSessionExpired...")
+            it.cancel()
+            jobDebugFakeSessionExpired = null
+            Log.d(TAG, "onDisconnecting: ...jobDebugFakeSessionExpired canceled")
+        }
+        Log.d(TAG, "-onDisconnecting()")
+    }
+
+    /**
+     * Called by listener.onDisconnected()
+     */
+    private fun onDisconnected() {
+        Log.d(TAG, "+onDisconnected()")
+        conversationCurrentItemSet("onDisconnected", null)
+        Log.d(TAG, "onDisconnected: audioSwitch.deactivate()")
+        audioSwitch.deactivate()
+        Log.d(TAG, "-onDisconnected()")
+    }
+
+    //
+    //endregion
+    //
+
+    //
+    //region PushToTalk
+    //
+
+    override fun pushToTalk(on: Boolean) {
+        pushToTalk(on, null)
+    }
+
     override fun pushToTalk(on: Boolean, sourceNodeId: String?) {
-        Log.i(TAG, "pushToTalk(on=$on)")
+        Log.i(TAG, "pushToTalk(on=$on, sourceNodeId=${quote(sourceNodeId)}")
         if (on) {
             if (pushToTalkState.value != PttState.Pressed) {
                 setPushToTalkState(PttState.Pressed)
@@ -456,14 +759,75 @@ class MobileViewModel(application: Application) :
         }
     }
     //
-    //region Conversation
+    //endregion
     //
 
-    @Suppress(
-        "SimplifyBooleanWithConstants",
-        //"KotlinConstantConditions",
-    )
-    val debugLogConversation = BuildConfig.DEBUG && true
+    //
+    //region Text
+    //
+
+    override fun sendText(message: String) {
+        realtimeClient?.also { realtimeClient ->
+            realtimeClient.dataSendConversationItemCreate(message.trim())
+            realtimeClient.dataSendResponseCreate()
+        }
+    }
+
+    //
+    //endregion
+    //
+
+    //
+    //region Cancel Response
+    //
+
+    private val _isCancelingResponse = MutableStateFlow(false)
+    override val isCancelingResponse = _isCancelingResponse.asStateFlow()
+
+    override fun sendCancelResponse(): Boolean {
+        realtimeClient?.also { realtimeClient ->
+            val result = realtimeClient.dataSendResponseCancel()
+            _isCancelingResponse.value = result
+            return result
+        }
+        return false
+    }
+
+    /**
+     * https://platform.openai.com/docs/api-reference/realtime-client-events/conversation/item/truncate
+     * conversation.item.truncate
+     * "Send this event to truncate a previous assistant message’s audio."
+     * To see it in use:
+     * https://youtu.be/mM8KhTxwPgs?t=965
+     */
+    override fun sendConversationItemTruncate(itemId: String, audioEndMs: Int): Boolean {
+        return realtimeClient?.dataSendConversationItemTruncate(itemId, audioEndMs) ?: false
+    }
+
+    override fun sendConversationItemTruncateConversationCurrentItem(): Boolean {
+        val conversationItem = conversationCurrentItem
+        Log.d(TAG, "sendConversationItemTruncateConversationCurrentItem: conversationCurrentItem=$conversationItem")
+        if (conversationItem == null) {
+            Log.w(TAG, "sendConversationItemTruncateConversationCurrentItem: conversationCurrentItem==null; ignoring")
+            return false
+        }
+        val itemId = conversationItem.id
+        if (itemId == null) {
+            Log.w(TAG, "sendConversationItemTruncateConversationCurrentItem: conversationCurrentItem.id==null; ignoring")
+            return false
+        }
+        val elapsedMs = Duration.between(conversationItem.timestamp, Instant.now()).toMillis()
+        Log.d(TAG, "sendConversationItemTruncateConversationCurrentItem: itemId=$itemId, elapsedMs=$elapsedMs")
+        return sendConversationItemTruncate(itemId, elapsedMs.toInt())
+    }
+
+    //
+    //endregion
+    //
+
+    //
+    //region Conversation
+    //
 
     enum class ConversationSpeaker {
         Local,
@@ -473,17 +837,100 @@ class MobileViewModel(application: Application) :
     data class ConversationItem(
         val id: String?,
         val speaker: ConversationSpeaker,
-        val initialText: String
+        val initialText: String,
+        val timestamp: Instant = Instant.now(),
     ) {
         var text by mutableStateOf(initialText)
+
+        override fun toString(): String {
+            return "ConversationItem(id=${quote(id)}, speaker=$speaker, timestamp=$timestamp, text=${quote(text)})"
+        }
     }
 
-    private val _conversationItems = mutableStateListOf<ConversationItem>()
-    val conversationItems: List<ConversationItem>
+    private fun initialConversations(): List<ConversationItem> {
+        return if (debugFakeConversationCount > 0) {
+            generateRandomConversationItems(debugFakeConversationCount)
+        } else {
+            emptyList()
+        }
+    }
+
+    /**
+     * Intentionally a mutableStateListOf (SnapshotStateList) and not
+     * a MutableStateFlow so that [I hope] mutations are more efficient.
+     * A MutableStateFlow would [I think] require replacing the whole list
+     * when any item mutation is made. :/
+     */
+    private val _conversationItems = mutableStateListOf<ConversationItem>().apply {
+        addAll(initialConversations())
+    }
+
+    /**
+     * Intentionally a List<ConversationItem> and not a StateFlow...
+     * ...for the same reasons as _conversationItems.
+     */
+    override val conversationItems: List<ConversationItem>
         get() = _conversationItems
 
-    fun conversationItemsClear() {
+    private fun conversationItemGet(index: Int): ConversationItem? {
+        val conversationItem = _conversationItems.getOrNull(index)
+        if (debugLogConversation) {
+            Log.w(TAG, "conversationItemGet($index)=$conversationItem")
+        }
+        return conversationItem
+    }
+
+    private fun conversationItemFindById(id: String): Pair<Int, ConversationItem?> {
+        val index = _conversationItems.indexOfFirst { it.id == id }
+        val pair = if (index == -1) {
+            Pair(-1, null)
+        } else {
+            Pair(index, _conversationItems[index])
+        }
+        if (debugLogConversation) {
+            Log.w(TAG, "conversationItemFindById(${quote(id)})=$pair")
+        }
+        return pair
+    }
+
+    private fun conversationItemAdd(caller: String, conversationItem: ConversationItem) {
+        if (debugLogConversation) {
+            Log.e(TAG, "conversationItemAdd(caller=${quote(caller)}, $conversationItem)")
+        }
+        _conversationItems.add(conversationItem)
+        if (conversationItem.speaker == ConversationSpeaker.Remote) {
+            conversationCurrentItemSet(caller, conversationItem)
+        }
+    }
+
+    private fun conversationItemUpdate(index: Int, conversationItem: ConversationItem) {
+        if (debugLogConversation) {
+            Log.e(TAG, "conversationItemUpdate($index, $conversationItem)")
+        }
+        _conversationItems[index] = conversationItem
+    }
+
+    private fun conversationItemDelete(index: Int) {
+        if (debugLogConversation) {
+            Log.e(TAG, "conversationItemDelete($index)")
+        }
+        _conversationItems.removeAt(index)
+    }
+
+    override fun conversationItemsClear() {
+        if (debugLogConversation) {
+            Log.e(TAG, "conversationItemsClear()")
+        }
         _conversationItems.clear()
+    }
+
+    private var conversationCurrentItem: ConversationItem? = null
+
+    private fun conversationCurrentItemSet(caller: String, conversationItem: ConversationItem?) {
+        if (debugLogConversation) {
+            Log.e(TAG, "conversationCurrentItemSet(${quote(caller)}, conversationItem=$conversationItem)")
+        }
+        conversationCurrentItem = conversationItem
     }
 
     //
@@ -491,27 +938,26 @@ class MobileViewModel(application: Application) :
     //
 
     //
-    //region Service Start/Stop & Notifications
+    //region Notifications & Service Start/Stop
     //
 
-    enum class ConnectionState {
-        Connecting,
-        Connected,
-        Disconnected,
-    }
+    private val shouldShowNotification: Boolean
+        get() = hasNoInUseActivities
 
-    private val _connectionStateFlow = MutableStateFlow(ConnectionState.Disconnected)
-    val connectionStateFlow = _connectionStateFlow.asStateFlow()
-
-    private fun observeConnectionForServiceStartStop() {
+    private fun observeConnectionState() {
         viewModelScope.launch {
-            connectionStateFlow.collect { connectionState ->
-                Log.i(TAG, "connectionStateFlow: connectionState=$connectionState")
+            connectionState.collect { connectionState ->
+                Log.i(TAG, "observeConnectionState: connectionState=$connectionState")
                 when (connectionState) {
                     ConnectionState.Connecting -> {
+                        conversationItemsClear()
                         MobileForegroundService.start(getApplication())
                     }
+                    ConnectionState.Disconnecting -> {
+                        onDisconnecting()
+                    }
                     ConnectionState.Disconnected -> {
+                        onDisconnected()
                         MobileForegroundService.stop(getApplication())
                     }
                     else -> {}
@@ -554,8 +1000,12 @@ class MobileViewModel(application: Application) :
     }
 
     private fun updateNotification(contentTitle: String, contentText: String) {
-        val notification = createNotification(contentTitle, contentText)
-        notificationManager.notify(NOTIFICATION_ID_SESSION, notification)
+        if (shouldShowNotification) {
+            val notification = createNotification(contentTitle, contentText)
+            notificationManager.notify(NOTIFICATION_ID_SESSION, notification)
+        } else {
+            showToast(context = getApplication(), text = contentText, forceInvokeOnMain = true)
+        }
     }
 
     private fun showNotificationSessionExpired(contentText: String) {
@@ -582,9 +1032,13 @@ class MobileViewModel(application: Application) :
     private val listeners = mutableListOf<RealtimeClientListener>()
     private val listener = object : RealtimeClientListener {
         override fun onConnecting() {
-            _connectionStateFlow.value = ConnectionState.Connecting
-
-            conversationItemsClear()
+            Log.d(TAG, "onConnecting()")
+            _connectionState.value = ConnectionState.Connecting
+            val context = getApplication<Application>()
+            if (debugToastVerbose) {
+                showToast(context = context, text = "Connecting...", forceInvokeOnMain = true)
+            }
+            playAudioResourceOnce(context, R.raw.connecting)
 
             listeners.forEach {
                 it.onConnecting()
@@ -592,6 +1046,7 @@ class MobileViewModel(application: Application) :
         }
 
         override fun onError(error: Exception) {
+            Log.d(TAG, "onError($error)")
             when (error) {
                 is UnknownHostException -> {
                     /*
@@ -626,16 +1081,47 @@ class MobileViewModel(application: Application) :
                     }
                     showNotificationSessionClientError(message!!)
                 }
+
+                else -> {
+                    val message = "Error: ${error.message}"
+                    showNotificationSessionClientError(message)
+                }
             }
             listeners.forEach {
                 it.onError(error)
             }
+            disconnect(isClient = true)
         }
 
         override fun onConnected() {
-            _connectionStateFlow.value = ConnectionState.Connected
+            Log.d(TAG, "onConnected()")
+            _connectionState.value = ConnectionState.Connected
+            if (debugToastVerbose) {
+                showToast(context = getApplication(), text = "Connected", forceInvokeOnMain = true)
+            }
+            playAudioResourceOnce(getApplication(), R.raw.connected)
 
+            Log.d(TAG, "onConnected: audioSwitch.activate()")
             audioSwitch.activate()
+
+            if (debugSimulateSessionExpiredMillis > 0) {
+                jobDebugFakeSessionExpired = viewModelScope.launch {
+                    delay(debugSimulateSessionExpiredMillis)
+                    // Create a fake RealtimeServerEventError
+                    val fakeError = RealtimeServerEventError(
+                        eventId = "fake-event-id",
+                        type = RealtimeServerEventError.Type.error,
+                        error = RealtimeServerEventErrorError(
+                            type = "invalid_request_error",
+                            message = "Your session hit the DEBUG SIMULATED maximum duration of ${debugSimulateSessionExpiredMillis / 1000} seconds.",
+                            code = "session_expired",
+                        )
+                    )
+                    onServerEventSessionExpired(fakeError)
+                    Log.d(TAG, "Debug: Fake session expired event triggered")
+                    disconnect()
+                }
+            }
 
             listeners.forEach {
                 it.onConnected()
@@ -643,8 +1129,15 @@ class MobileViewModel(application: Application) :
         }
 
         override fun onDisconnected() {
+            Log.d(TAG, "onDisconnected()")
             this@MobileViewModel.onDisconnecting()
 
+            if (debugToastVerbose) {
+                showToast(context = getApplication(), text = "Disconnected", forceInvokeOnMain = true)
+            }
+            playAudioResourceOnce(getApplication(), R.raw.disconnected)
+
+            disconnect(isClient = true)
             listeners.forEach {
                 it.onDisconnected()
             }
@@ -653,6 +1146,7 @@ class MobileViewModel(application: Application) :
         }
 
         override fun onBinaryMessageReceived(data: ByteArray): Boolean {
+            //Log.d(TAG, "onBinaryMessageReceived(): data(${data.size})=...")
             listeners.forEach {
                 if (it.onBinaryMessageReceived(data)) return true
             }
@@ -660,6 +1154,7 @@ class MobileViewModel(application: Application) :
         }
 
         override fun onTextMessageReceived(message: String): Boolean {
+            //Log.d(TAG, "onTextMessageReceived(): message=${quote(message)}")
             listeners.forEach {
                 if (it.onTextMessageReceived(message)) return true
             }
@@ -684,10 +1179,8 @@ class MobileViewModel(application: Application) :
             val content = item.content
             val text = content?.joinToString(separator = "") { it.text ?: "" } ?: ""
             if (text.isNotBlank()) {
-                if (debugLogConversation) {
-                    Log.w(TAG, "onServerEventConversationItemCreated: conversationItems.add(ConversationItem(id=${quote(id)}, initialText=${quote(text)}")
-                }
-                _conversationItems.add(
+                conversationItemAdd(
+                    "onServerEventConversationItemCreated",
                     ConversationItem(
                         id = id,
                         speaker = ConversationSpeaker.Local,
@@ -717,10 +1210,8 @@ class MobileViewModel(application: Application) :
             val transcript =
                 realtimeServerEventConversationItemInputAudioTranscriptionCompleted.transcript.trim() // DO TRIM!
             if (transcript.isNotBlank()) {
-                if (debugLogConversation) {
-                    Log.w(TAG, "onServerEventConversationItemInputAudioTranscriptionCompleted: conversationItems.add(ConversationItem(id=${quote(id)}, initialText=${quote(transcript)}")
-                }
-                _conversationItems.add(
+                conversationItemAdd(
+                    "onServerEventConversationItemInputAudioTranscriptionCompleted",
                     ConversationItem(
                         id = id,
                         speaker = ConversationSpeaker.Local,
@@ -752,54 +1243,89 @@ class MobileViewModel(application: Application) :
         }
 
         override fun onServerEventError(realtimeServerEventError: RealtimeServerEventError) {
+            Log.d(TAG, "onServerEventError($realtimeServerEventError)")
+            val error = realtimeServerEventError.error
+            val text = error.message
+            showToast(
+                context = getApplication(),
+                text = text,
+                duration = Toast.LENGTH_LONG,
+                forceInvokeOnMain = true,
+            )
             listeners.forEach {
                 it.onServerEventError(realtimeServerEventError)
             }
         }
 
         override fun onServerEventInputAudioBufferCleared(realtimeServerEventInputAudioBufferCleared: RealtimeServerEventInputAudioBufferCleared) {
+            Log.d(TAG, "onServerEventInputAudioBufferCleared($realtimeServerEventInputAudioBufferCleared)")
             listeners.forEach {
                 it.onServerEventInputAudioBufferCleared(realtimeServerEventInputAudioBufferCleared)
             }
         }
 
         override fun onServerEventInputAudioBufferCommitted(realtimeServerEventInputAudioBufferCommitted: RealtimeServerEventInputAudioBufferCommitted) {
+            Log.d(TAG, "onServerEventInputAudioBufferCommitted($realtimeServerEventInputAudioBufferCommitted)")
             listeners.forEach {
                 it.onServerEventInputAudioBufferCommitted(realtimeServerEventInputAudioBufferCommitted)
             }
         }
 
         override fun onServerEventInputAudioBufferSpeechStarted(realtimeServerEventInputAudioBufferSpeechStarted: RealtimeServerEventInputAudioBufferSpeechStarted) {
+            Log.d(TAG, "onServerEventInputAudioBufferSpeechStarted($realtimeServerEventInputAudioBufferSpeechStarted)")
             listeners.forEach {
                 it.onServerEventInputAudioBufferSpeechStarted(realtimeServerEventInputAudioBufferSpeechStarted)
             }
         }
 
         override fun onServerEventInputAudioBufferSpeechStopped(realtimeServerEventInputAudioBufferSpeechStopped: RealtimeServerEventInputAudioBufferSpeechStopped) {
+            Log.d(TAG, "onServerEventInputAudioBufferSpeechStopped($realtimeServerEventInputAudioBufferSpeechStopped)")
             listeners.forEach {
                 it.onServerEventInputAudioBufferSpeechStopped(realtimeServerEventInputAudioBufferSpeechStopped)
             }
         }
 
-        override fun onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped: ServerEventOutputAudioBufferAudioStopped) {
+        override fun onServerEventOutputAudioBufferAudioStarted(realtimeServerEventOutputAudioBufferAudioStarted: RealtimeClient.ServerEventOutputAudioBufferAudioStarted) {
+            Log.d(TAG, "onServerEventOutputAudioBufferAudioStarted($realtimeServerEventOutputAudioBufferAudioStarted)")
             listeners.forEach {
-                it.onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped)
+                it.onServerEventOutputAudioBufferAudioStarted(realtimeServerEventOutputAudioBufferAudioStarted)
             }
         }
 
+        override fun onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped: ServerEventOutputAudioBufferAudioStopped,
+        ) {
+            Log.d(TAG, "onServerEventOutputAudioBufferAudioStopped($realtimeServerEventOutputAudioBufferAudioStopped)")
+            if (_isCancelingResponse.value) {
+                _isCancelingResponse.value = false
+                showToast(
+                    context = getApplication(),
+                    text = "Response canceled",
+                    forceInvokeOnMain = true,
+                )
+            }
+            listeners.forEach {
+                it.onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped,
+                )
+            }
+            conversationCurrentItemSet("onServerEventOutputAudioBufferAudioStopped", null)
+        }
+
         override fun onServerEventRateLimitsUpdated(realtimeServerEventRateLimitsUpdated: RealtimeServerEventRateLimitsUpdated) {
+            Log.d(TAG, "onServerEventRateLimitsUpdated($realtimeServerEventRateLimitsUpdated)")
             listeners.forEach {
                 it.onServerEventRateLimitsUpdated(realtimeServerEventRateLimitsUpdated)
             }
         }
 
         override fun onServerEventResponseAudioDelta(realtimeServerEventResponseAudioDelta: RealtimeServerEventResponseAudioDelta) {
+            Log.d(TAG, "onServerEventResponseAudioDelta($realtimeServerEventResponseAudioDelta)")
             listeners.forEach {
                 it.onServerEventResponseAudioDelta(realtimeServerEventResponseAudioDelta)
             }
         }
 
         override fun onServerEventResponseAudioDone(realtimeServerEventResponseAudioDone: RealtimeServerEventResponseAudioDone) {
+            Log.d(TAG, "onServerEventResponseAudioDone($realtimeServerEventResponseAudioDone)")
             listeners.forEach {
                 it.onServerEventResponseAudioDone(realtimeServerEventResponseAudioDone)
             }
@@ -810,32 +1336,24 @@ class MobileViewModel(application: Application) :
                 Log.d(TAG, "onServerEventResponseAudioTranscriptDelta($realtimeServerEventResponseAudioTranscriptDelta)")
             }
             val id = realtimeServerEventResponseAudioTranscriptDelta.itemId
-            val delta =
-                realtimeServerEventResponseAudioTranscriptDelta.delta // DO **NOT** TRIM!
+            val delta = realtimeServerEventResponseAudioTranscriptDelta.delta // DO **NOT** TRIM!
 
             // Append this delta to any current in progress conversation,
             // or create a new conversation
-            val index = _conversationItems.indexOfFirst { it.id == id }
+            var (index, conversationItem) = conversationItemFindById(id)
             if (debugLogConversation) {
-                Log.w(TAG, "onServerEventResponseAudioTranscriptDelta: id=$id, delta=$delta, index=$index")
+                Log.w(TAG, "onServerEventResponseAudioTranscriptDelta: id=$id, delta=$delta, index=$index, conversationItem=$conversationItem")
             }
-            if (index == -1) {
-                val conversationItem = ConversationItem(
+            if (conversationItem == null) {
+                conversationItem = ConversationItem(
                     id = id,
                     speaker = ConversationSpeaker.Remote,
                     initialText = delta,
                 )
-                if (debugLogConversation) {
-                    Log.w(TAG, "conversationItems.add($conversationItem)")
-                }
-                _conversationItems.add(conversationItem)
+                conversationItemAdd("onServerEventResponseAudioTranscriptDelta", conversationItem)
             } else {
-                val conversationItem = _conversationItems[index]
                 conversationItem.text += delta
-                if (debugLogConversation) {
-                    Log.w(TAG, "conversationItems.set($index, $conversationItem)")
-                }
-                _conversationItems[index] = conversationItem
+                conversationItemUpdate(index, conversationItem)
             }
             listeners.forEach {
                 it.onServerEventResponseAudioTranscriptDelta(realtimeServerEventResponseAudioTranscriptDelta)
@@ -882,22 +1400,32 @@ class MobileViewModel(application: Application) :
             if (debugLogConversation) {
                 Log.d(TAG, "onServerEventResponseDone($realtimeServerEventResponseDone)")
             }
-            realtimeServerEventResponseDone.response.output?.forEach { outputConversationItem ->
+            val response = realtimeServerEventResponseDone.response
+            when (response.status) {
+                RealtimeResponse.Status.incomplete -> {
+                    val statusDetails = response.statusDetails
+                    when (statusDetails?.reason) {
+                        RealtimeResponseStatusDetails.Reason.max_output_tokens -> {
+                            showToast(
+                                context = getApplication(),
+                                text = "Max output tokens reached",
+                                forceInvokeOnMain = true,
+                            )
+                        }
+                        else -> { /* ignore */ }
+                    }
+                }
+                else -> { /* ignore */ }
+            }
+            response.output?.forEach { outputConversationItem ->
                 if (debugLogConversation) {
                     Log.w(TAG, "onServerEventResponseDone: outputConversationItem=$outputConversationItem")
                 }
                 val id = outputConversationItem.id ?: return@forEach
-                val index = _conversationItems.indexOfFirst { it.id == id }
-                if (index != -1) {
-                    val conversationItem = _conversationItems[index]
-                    if (debugLogConversation) {
-                        Log.w(TAG, "onServerEventResponseDone: removing $conversationItem at index=$index")
-                    }
-                    _conversationItems.removeAt(index)
-                    if (debugLogConversation) {
-                        Log.w(TAG, "onServerEventResponseDone: adding $conversationItem at end")
-                    }
-                    _conversationItems.add(conversationItem)
+                val (index, conversationItem) = conversationItemFindById(id)
+                if (conversationItem != null) {
+                    conversationItemDelete(index)
+                    conversationItemAdd("onServerEventResponseDone", conversationItem)
                 }
             }
             listeners.forEach {
@@ -905,64 +1433,76 @@ class MobileViewModel(application: Application) :
             }
         }
 
-        override fun onServerEventResponseFunctionCallArgumentsDelta(
-            realtimeServerEventResponseFunctionCallArgumentsDelta: RealtimeServerEventResponseFunctionCallArgumentsDelta
-        ) {
+        override fun onServerEventResponseFunctionCallArgumentsDelta(realtimeServerEventResponseFunctionCallArgumentsDelta: RealtimeServerEventResponseFunctionCallArgumentsDelta) {
+            Log.d(TAG, "onServerEventResponseFunctionCallArgumentsDelta($realtimeServerEventResponseFunctionCallArgumentsDelta)")
             listeners.forEach {
                 it.onServerEventResponseFunctionCallArgumentsDelta(realtimeServerEventResponseFunctionCallArgumentsDelta)
             }
         }
 
-        override fun onServerEventResponseFunctionCallArgumentsDone(
-            realtimeServerEventResponseFunctionCallArgumentsDone: RealtimeServerEventResponseFunctionCallArgumentsDone
-        ) {
+        override fun onServerEventResponseFunctionCallArgumentsDone(realtimeServerEventResponseFunctionCallArgumentsDone: RealtimeServerEventResponseFunctionCallArgumentsDone) {
+            Log.d(TAG, "onServerEventResponseFunctionCallArgumentsDone($realtimeServerEventResponseFunctionCallArgumentsDone)")
             listeners.forEach {
                 it.onServerEventResponseFunctionCallArgumentsDone(realtimeServerEventResponseFunctionCallArgumentsDone)
             }
         }
 
         override fun onServerEventResponseOutputItemAdded(realtimeServerEventResponseOutputItemAdded: RealtimeServerEventResponseOutputItemAdded) {
+            Log.d(TAG, "onServerEventResponseOutputItemAdded($realtimeServerEventResponseOutputItemAdded)")
             listeners.forEach {
                 it.onServerEventResponseOutputItemAdded(realtimeServerEventResponseOutputItemAdded)
             }
         }
 
         override fun onServerEventResponseOutputItemDone(realtimeServerEventResponseOutputItemDone: RealtimeServerEventResponseOutputItemDone) {
+            Log.d(TAG, "onServerEventResponseOutputItemDone($realtimeServerEventResponseOutputItemDone)")
             listeners.forEach {
                 it.onServerEventResponseOutputItemDone(realtimeServerEventResponseOutputItemDone)
             }
         }
 
         override fun onServerEventResponseTextDelta(realtimeServerEventResponseTextDelta: RealtimeServerEventResponseTextDelta) {
+            Log.d(TAG, "onServerEventResponseTextDelta($realtimeServerEventResponseTextDelta)")
             listeners.forEach {
                 it.onServerEventResponseTextDelta(realtimeServerEventResponseTextDelta)
             }
         }
 
         override fun onServerEventResponseTextDone(realtimeServerEventResponseTextDone: RealtimeServerEventResponseTextDone) {
+            Log.d(TAG, "onServerEventResponseTextDone($realtimeServerEventResponseTextDone)")
             listeners.forEach {
                 it.onServerEventResponseTextDone(realtimeServerEventResponseTextDone)
             }
         }
 
         override fun onServerEventSessionCreated(realtimeServerEventSessionCreated: RealtimeServerEventSessionCreated) {
+            Log.d(TAG, "onServerEventSessionCreated($realtimeServerEventSessionCreated)")
+            if (debugToastVerbose) {
+                showToast(context = getApplication(), text = "Session Created", forceInvokeOnMain = true)
+            }
             listeners.forEach {
                 it.onServerEventSessionCreated(realtimeServerEventSessionCreated)
             }
         }
 
         override fun onServerEventSessionUpdated(realtimeServerEventSessionUpdated: RealtimeServerEventSessionUpdated) {
+            Log.d(TAG, "onServerEventSessionUpdated($realtimeServerEventSessionUpdated)")
+            if (debugToastVerbose) {
+                showToast(
+                    context = getApplication(),
+                    text = "Session Updated",
+                    forceInvokeOnMain = true,
+                )
+            }
             listeners.forEach {
                 it.onServerEventSessionUpdated(realtimeServerEventSessionUpdated)
             }
         }
 
         override fun onServerEventSessionExpired(realtimeServerEventError: RealtimeServerEventError) {
-            if (hasNoInUseActivities) {
-                val message = realtimeServerEventError.error.message
-                showNotificationSessionExpired(message)
-            }
-
+            Log.d(TAG, "onServerEventSessionExpired($realtimeServerEventError)")
+            val message = realtimeServerEventError.error.message
+            showNotificationSessionExpired(message)
             listeners.forEach {
                 it.onServerEventSessionExpired(realtimeServerEventError)
             }
@@ -985,39 +1525,62 @@ class MobileViewModel(application: Application) :
     //region AudioSwitch
     //
 
-    var audioDevices by mutableStateOf<List<AudioDevice>>(emptyList())
-        private set
+    private var _audioDevices = MutableStateFlow(emptyList<AudioDevice>())
+    override val audioDevices = _audioDevices.asStateFlow()
 
-    var selectedAudioDevice by mutableStateOf<AudioDevice?>(null)
-        private set
+    private var _selectedAudioDevice = MutableStateFlow<AudioDevice?>(null)
+    override val selectedAudioDevice = _selectedAudioDevice.asStateFlow()
 
-    fun selectAudioDevice(device: AudioDevice) {
+    override fun selectAudioDevice(device: AudioDevice) {
         // AudioSwitch will also update our callback with the new "selectedDevice"
-        // so we typically *don't* set 'selectedAudioDevice' manually here.
+        // so we typically *don't* set '_selectedAudioDevice' manually here.
         audioSwitch.selectDevice(device)
+    }
+
+    private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        Log.d(TAG , "onAudioFocusChange($focusChange)")
+    }
+
+    private val bluetoothHeadsetConnectionListener = object : BluetoothHeadsetConnectionListener {
+        override fun onBluetoothHeadsetActivationError() {
+            Log.d(TAG, "onBluetoothHeadsetActivationError()")
+        }
+
+        override fun onBluetoothHeadsetStateChanged(headsetName: String?, state: Int) {
+            Log.d(TAG, "onBluetoothHeadsetStateChanged($headsetName, $state)")
+        }
+
+        override fun onBluetoothScoStateChanged(state: Int) {
+            Log.d(TAG, "onBluetoothScoStateChanged($state)")
+        }
     }
 
     private val audioSwitch = AudioSwitch(
         context = application,
+        audioFocusChangeListener = audioFocusChangeListener,
+        bluetoothHeadsetConnectionListener = bluetoothHeadsetConnectionListener,
         loggingEnabled = DEBUG,
+        // Override their private defaultPreferredDeviceList to put Speakerphone above Earpiece
         preferredDeviceList = listOf(
-            AudioDevice.BluetoothHeadset::class.java,
-            AudioDevice.WiredHeadset::class.java,
-            AudioDevice.Speakerphone::class.java,
-            AudioDevice.Earpiece::class.java
+            BluetoothHeadset::class.java,
+            WiredHeadset::class.java,
+            Speakerphone::class.java,
+            Earpiece::class.java,
         )
     )
 
-    fun audioSwitchStart() {
+    private fun audioSwitchStart() {
         audioSwitchStop()
+        Log.d(TAG, "audioSwitchStart: audioSwitch.start(...)")
         audioSwitch.start { audioDevices, selectedAudioDevice ->
-            Log.d(TAG, "audioSwitchStart: audioDevices=$audioDevices, selectedAudioDevice=$selectedAudioDevice")
-            this.audioDevices = audioDevices
-            this.selectedAudioDevice = selectedAudioDevice
+            Log.d(TAG, "audioSwitchStart.listener: selectedAudioDevice=$selectedAudioDevice, audioDevices=$audioDevices")
+            _audioDevices.value = audioDevices
+            _selectedAudioDevice.value = selectedAudioDevice
         }
     }
 
     private fun audioSwitchStop() {
+        Log.d(TAG, "audioSwitchStop: audioSwitch.stop()")
         audioSwitch.stop()
     }
 

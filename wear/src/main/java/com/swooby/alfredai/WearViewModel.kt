@@ -10,6 +10,7 @@ import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.PutDataRequest
 import com.google.android.gms.wearable.Wearable
 import com.swooby.alfredai.Utils.playAudioResourceOnce
+import com.swooby.alfredai.Utils.quote
 
 class WearViewModel(application: Application) :
     SharedViewModel(application)
@@ -55,7 +56,7 @@ class WearViewModel(application: Application) :
     }
 
     override fun pushToTalk(on: Boolean, sourceNodeId: String?) {
-        Log.i(TAG, "pushToTalk(on=$on)")
+        Log.i(TAG, "pushToTalk(on=$on, sourceNodeId=${quote(sourceNodeId)})")
         if (on) {
             if (pushToTalkState.value != PttState.Pressed) {
                 setPushToTalkState(PttState.Pressed)

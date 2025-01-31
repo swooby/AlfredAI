@@ -1,10 +1,8 @@
 package com.swooby.alfredai
 
-import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
@@ -64,6 +62,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -90,52 +89,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat.checkSelfPermission
-import com.openai.infrastructure.ClientError
-import com.openai.infrastructure.ClientException
-import com.openai.models.RealtimeServerEventConversationCreated
-import com.openai.models.RealtimeServerEventConversationItemCreated
-import com.openai.models.RealtimeServerEventConversationItemDeleted
-import com.openai.models.RealtimeServerEventConversationItemInputAudioTranscriptionCompleted
-import com.openai.models.RealtimeServerEventConversationItemInputAudioTranscriptionFailed
-import com.openai.models.RealtimeServerEventConversationItemTruncated
-import com.openai.models.RealtimeServerEventError
-import com.openai.models.RealtimeServerEventInputAudioBufferCleared
-import com.openai.models.RealtimeServerEventInputAudioBufferCommitted
-import com.openai.models.RealtimeServerEventInputAudioBufferSpeechStarted
-import com.openai.models.RealtimeServerEventInputAudioBufferSpeechStopped
-import com.openai.models.RealtimeServerEventRateLimitsUpdated
-import com.openai.models.RealtimeServerEventResponseAudioDelta
-import com.openai.models.RealtimeServerEventResponseAudioDone
-import com.openai.models.RealtimeServerEventResponseAudioTranscriptDelta
-import com.openai.models.RealtimeServerEventResponseAudioTranscriptDone
-import com.openai.models.RealtimeServerEventResponseContentPartAdded
-import com.openai.models.RealtimeServerEventResponseContentPartDone
-import com.openai.models.RealtimeServerEventResponseCreated
-import com.openai.models.RealtimeServerEventResponseDone
-import com.openai.models.RealtimeServerEventResponseFunctionCallArgumentsDelta
-import com.openai.models.RealtimeServerEventResponseFunctionCallArgumentsDone
-import com.openai.models.RealtimeServerEventResponseOutputItemAdded
-import com.openai.models.RealtimeServerEventResponseOutputItemDone
-import com.openai.models.RealtimeServerEventResponseTextDelta
-import com.openai.models.RealtimeServerEventResponseTextDone
-import com.openai.models.RealtimeServerEventSessionCreated
-import com.openai.models.RealtimeServerEventSessionUpdated
-import com.swooby.alfredai.Utils.playAudioResourceOnce
-import com.swooby.alfredai.Utils.quote
 import com.swooby.alfredai.AppUtils.showToast
 import com.swooby.alfredai.Utils.getFriendlyPermissionName
-import com.swooby.alfredai.openai.realtime.RealtimeClient
-import com.swooby.alfredai.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
 import com.swooby.alfredai.ui.theme.AlfredAITheme
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
-import org.json.JSONObject
-import java.net.UnknownHostException
 
 class MobileActivity : ComponentActivity() {
     companion object {
@@ -152,174 +109,61 @@ class MobileActivity : ComponentActivity() {
             MobileApp(mobileViewModel)
         }
     }
+}
 
-    override fun onStart() {
-        super.onStart()
-        mobileViewModel.onStartOrResume(this)
-    }
+@Preview(
+    uiMode = Configuration.UI_MODE_NIGHT_NO,
+    showBackground = true
+)
+@Composable
+fun PushToTalkButtonActivityPreviewLight() {
+    MobileApp(MobileViewModelPreview())
+}
 
-    override fun onStop() {
-        super.onStop()
-        mobileViewModel.onPauseOrStop(this)
-    }
+@Preview(
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
+    showBackground = true
+)
+@Composable
+fun PushToTalkButtonActivityPreviewDark() {
+    MobileApp(MobileViewModelPreview())
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun MobileApp(mobileViewModel: MobileViewModel? = null) {
+fun MobileApp(mobileViewModel: MobileViewModelInterface) {
     @Suppress("LocalVariableName")
     val TAG = "MobileApp"
 
-    @Suppress(
-        "SimplifyBooleanWithConstants",
-        "KotlinConstantConditions",
-    )
-    val debugForceShowPreferences = BuildConfig.DEBUG && false
-
-    @Suppress(
-        "SimplifyBooleanWithConstants",
-        "KotlinConstantConditions",
-    )
-    val debugForceDontAutoConnect = BuildConfig.DEBUG && false
-
-    @Suppress(
-        "SimplifyBooleanWithConstants",
-        "KotlinConstantConditions",
-    )
-    val debugConnectDelayMillis = if (BuildConfig.DEBUG && false) 10_000L else 0L
-
-    @Suppress(
-        "SimplifyBooleanWithConstants",
-        "KotlinConstantConditions",
-    )
-    val debugToastVerbose = BuildConfig.DEBUG && false
+    val context = LocalContext.current
 
     //
     //region Conversation
     //
 
-    fun mockConversationItems(): List<MobileViewModel.ConversationItem> {
-        val conversationItems = mutableListOf<MobileViewModel.ConversationItem>()
-        @Suppress(
-            "SimplifyBooleanWithConstants",
-            "KotlinConstantConditions",
-        )
-        if (BuildConfig.DEBUG && false) {
-            fun generateRandomSentence(): String {
-                val subjects = listOf("The cat", "The dog", "The bird", "The fish")
-                val verbs = listOf("jumps", "runs", "flies", "swims")
-                val objects = listOf("over the fence", "in the park", "through the air", "in the water")
-                return "${subjects.random()} ${verbs.random()} ${objects.random()}.".repeat((20..30).random())
-            }
-
-            for (i in 0..20) {
-                conversationItems.add(
-                    MobileViewModel.ConversationItem(
-                        id = "$i",
-                        speaker = MobileViewModel.ConversationSpeaker.entries.random(),
-                        initialText = generateRandomSentence()
-                    )
-                )
-            }
-        }
-        return conversationItems
-    }
-
-    val conversationItems = mobileViewModel?.conversationItems ?: mockConversationItems()
+    /**
+     * Intentionally not a StateFlow.collectAsState() State.
+     * This allows the ViewModel to more efficiently update individual items.
+     */
+    val conversationItems = mobileViewModel.conversationItems
 
     //
     //endregion
     //
 
-    var showPreferences by remember {
-        mutableStateOf(debugForceShowPreferences || !(mobileViewModel?.isConfigured ?: true))
-    }
-    var onSaveButtonClick: (() -> Job?)? by remember { mutableStateOf(null) }
+    val isConfigured = mobileViewModel.isConfigured.collectAsState()
+
+    var showPreferences by remember { mutableStateOf(!isConfigured.value) }
+    var onSaveButtonClick: (() -> Unit)? by remember { mutableStateOf(null) }
 
     //
     //region Connect/Disconnect
     //
 
-    var isConnectingOrConnected by remember {
-        mutableStateOf(mobileViewModel?.isConnectingOrConnected ?: false)
-    }
-    var isConnected by remember {
-        mutableStateOf(mobileViewModel?.isConnected ?: false)
-    }
+    val isConnected = mobileViewModel.isConnected.collectAsState()
+    val isConnectingOrConnected = mobileViewModel.isConnectingOrConnected.collectAsState()
 
-    var isCancelingResponse by remember {
-        mutableStateOf(
-            mobileViewModel?.realtimeClient?.isCancelingResponse ?: false
-        )
-    }
-
-    var isConnectSwitchOn by remember { mutableStateOf(false) }
-    var isConnectSwitchManualOff by remember { mutableStateOf(false) }
-    var jobConnect by remember { mutableStateOf<Job?>(null) }
-
-    val context = LocalContext.current
-
-    fun connect() {
-        Log.d(TAG, "connect()")
-        if (mobileViewModel?.isConfigured == true) {
-            mobileViewModel.realtimeClient?.also { realtimeClient ->
-                isConnectSwitchOn = true
-                if (!isConnectingOrConnected) {
-                    isConnectingOrConnected = true
-                    mobileViewModel.conversationItemsClear()
-                    jobConnect = CoroutineScope(Dispatchers.IO).launch {
-                        if (debugConnectDelayMillis > 0) {
-                            delay(debugConnectDelayMillis)
-                        }
-                        val ephemeralApiKey = realtimeClient.connect()
-                        //Log.d(TAG, "ephemeralApiKey: $ephemeralApiKey")
-                        if (ephemeralApiKey != null) {
-                            realtimeClient.setLocalAudioTrackMicrophoneEnabled(false)
-                        }
-                    }
-                }
-            }
-        } else {
-            showToast(context, "Not configured", Toast.LENGTH_SHORT)
-            showPreferences = true
-        }
-    }
-
-    fun connectIfAutoConnectAndNotManualOff() {
-        if (!debugForceDontAutoConnect && mobileViewModel?.autoConnect?.value == true) {
-            if (!isConnectSwitchManualOff) {
-                connect()
-            }
-        } else {
-            showToast(context, "Auto-connect is disabled", Toast.LENGTH_SHORT)
-        }
-    }
-
-    fun disconnect(
-        isManual: Boolean = false,
-        isClient: Boolean = false,
-    ) {
-        Log.d(TAG, "disconnect(isManual=$isManual, isClient=$isClient)")
-        isConnectSwitchOn = false
-        if (isManual) {
-            isConnectSwitchManualOff = true
-        }
-        isConnectingOrConnected = false
-        isConnected = false
-        jobConnect?.also {
-            Log.d(TAG, "Canceling jobConnect...")
-            it.cancel()
-            jobConnect = null
-            Log.d(TAG, "...jobConnect canceled.")
-        }
-        if (!isClient) {
-            mobileViewModel?.realtimeClient?.also { realtimeClient ->
-                Log.d(TAG, "Disconnecting RealtimeClient...")
-                realtimeClient.disconnect()
-                Log.d(TAG, "...RealtimeClient disconnected.")
-            }
-        }
-    }
+    val isCancelingResponse = mobileViewModel.isCancelingResponse.collectAsState()
 
     //
     //endregion
@@ -329,28 +173,55 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
     //region Permissions
     //
 
-    val requiredPermissions = arrayOf(
-        Manifest.permission.RECORD_AUDIO,
-        /*
-        NOTE: As of Android 12 (API 31), BLUETOOTH* no longer absolutely requires LOCATION permission per:
-        https://developer.android.com/about/versions/12/summary
-        https://developer.android.com/about/versions/12/behavior-changes-12
-        https://developer.android.com/develop/connectivity/bluetooth/bt-permissions
-        https://developer.android.com/develop/connectivity/bluetooth/bt-permissions#declare-android12-or-higher
-         */
-        Manifest.permission.BLUETOOTH_CONNECT,
-        Manifest.permission.BLUETOOTH_SCAN,
-        Manifest.permission.POST_NOTIFICATIONS,
-        Manifest.permission.FOREGROUND_SERVICE,
-        MobileForegroundService.FOREGROUND_SERVICE_PERMISSION,
-    )
+    val hasAllRequiredPermissions = mobileViewModel.hasAllRequiredPermissions.collectAsState()
 
-    var hasAllRequiredPermissions by remember {
-        mutableStateOf(
-            requiredPermissions.all {
-                checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+    fun showPermissionsDeniedDialog(
+        permissionsResult: Map<String, Boolean>,
+        requestPermissionsLauncher: ActivityResultLauncher<Array<String>>
+    ) {
+        (context as? Activity)?.also { activity ->
+            var anyDenied = false
+            val shouldShowRequestPermissionRationale = mutableSetOf<String>()
+            val requiredPermissions = mobileViewModel.requiredPermissions
+            requiredPermissions.forEach { permission ->
+                if (permissionsResult[permission] == false) {
+                    if (ActivityCompat.shouldShowRequestPermissionRationale(activity, permission)) {
+                        shouldShowRequestPermissionRationale.add(getFriendlyPermissionName(permission))
+                    } else {
+                        anyDenied = true
+                    }
+                }
             }
-        )
+            if (shouldShowRequestPermissionRationale.isNotEmpty()) {
+                // Show rationale dialog and allow the user to try again
+                val permissionsText = shouldShowRequestPermissionRationale.joinToString("\", \"")
+                AlertDialog.Builder(activity)
+                    .setTitle("Permission(s) Required")
+                    .setMessage("This app needs “${permissionsText}” permissions for full functionality.\nPlease grant the permission.")
+                    .setPositiveButton("Grant") { _, _ ->
+                        requestPermissionsLauncher.launch(requiredPermissions)
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            } else {
+                if (anyDenied) {
+                    // User selected “don’t ask again” or system can’t show rationale.
+                    // Guide the user to app settings.
+                    AlertDialog.Builder(activity)
+                        .setTitle("Permission(s) Required")
+                        .setMessage("Some required permissions have been denied.\nPlease enable them in app settings.")
+                        .setPositiveButton("Open Settings") { _, _ ->
+                            activity.startActivity(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.fromParts("package", activity.packageName, null)
+                                }
+                            )
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+            }
+        }
     }
 
     var requestPermissionsLauncher: ActivityResultLauncher<Array<String>>? = null
@@ -358,302 +229,15 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissionsResult: Map<String, Boolean> ->
         val allGranted = permissionsResult.values.all { it }
-        hasAllRequiredPermissions = allGranted
         if (allGranted) {
-            Log.d(TAG, "All required permissions granted")
-            mobileViewModel?.audioSwitchStart()
-            connectIfAutoConnectAndNotManualOff()
+            Log.i(TAG, "requestPermissionsLauncher: All required permissions granted")
+            mobileViewModel.updatePermissionsState()
         } else {
-            Log.d(TAG, "All required permissions NOT granted")
-            (context as? Activity)?.let { activity ->
-                var anyDenied = false
-                val shouldShowRequestPermissionRationale = mutableSetOf<String>()
-                requiredPermissions.forEach { permission ->
-                    // If this particular permission was *not* granted, handle it:
-                    if (permissionsResult[permission] == false) {
-                        if (ActivityCompat.shouldShowRequestPermissionRationale(
-                                activity,
-                                permission
-                            )
-                        ) {
-                            shouldShowRequestPermissionRationale.add(getFriendlyPermissionName(permission))
-                        } else {
-                            anyDenied = true
-                        }
-                    }
-                }
-                if (shouldShowRequestPermissionRationale.isNotEmpty()) {
-                    // Show rationale dialog and allow the user to try again
-                    val permissionsText = shouldShowRequestPermissionRationale.joinToString("\", \"")
-                    AlertDialog.Builder(activity)
-                        .setTitle("Permission Required")
-                        .setMessage("This app needs “${permissionsText}” permissions for full functionality.\nPlease grant the permission.")
-                        .setPositiveButton("Grant") { _, _ ->
-                            requestPermissionsLauncher!!.launch(requiredPermissions)
-                        }
-                        .setNegativeButton("Cancel", null)
-                        .show()
-                } else {
-                    if (anyDenied) {
-                        // User selected “don’t ask again” or system can’t show rationale.
-                        // Guide the user to app settings.
-                        AlertDialog.Builder(activity)
-                            .setTitle("Permission Required")
-                            .setMessage("Some required permissions have been denied.\nPlease enable them in app settings.")
-                            .setPositiveButton("Open Settings") { _, _ ->
-                                val intent =
-                                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                        data = Uri.fromParts("package", activity.packageName, null)
-                                    }
-                                activity.startActivity(intent)
-                            }
-                            .setNegativeButton("Cancel", null)
-                            .show()
-                    } else {
-                        // ignore; weird that this says it is required :/
-                    }
-                }
-            }
+            Log.w(TAG, "requestPermissionsLauncher: All required permissions NOT granted")
+            showPermissionsDeniedDialog(permissionsResult, requestPermissionsLauncher!!)
         }
     }
 
-    //
-    //endregion
-    //
-
-    //
-    //region RealtimeClientListener
-    //
-    DisposableEffect(Unit) {
-        val realtimeClientListener = object : RealtimeClient.RealtimeClientListener {
-            override fun onConnecting() {
-                Log.d(TAG, "onConnecting()")
-                isConnectingOrConnected = true
-                if (debugToastVerbose) {
-                    showToast(context = context, text = "Connecting...", forceInvokeOnMain = true)
-                }
-                playAudioResourceOnce(context, R.raw.connecting)
-            }
-
-            override fun onError(error: Exception) {
-                Log.d(TAG, "onError($error)")
-                disconnect(isClient = true)
-                val text = when (error) {
-                    is UnknownHostException -> {
-                        /*
-2025-01-17 17:43:21.190 27419-27475 okhttp.OkHttpClient com.swooby.alfredai I  <-- HTTP FAILED: java.net.UnknownHostException: Unable to resolve host "api.openai.com": No address associated with hostname
-2025-01-17 17:43:21.190 27419-27475 RealtimeClient      com.swooby.alfredai E  connect: exception=java.net.UnknownHostException: Unable to resolve host "api.openai.com": No address associated with hostname
-2025-01-17 17:43:21.190 27419-27475 PushToTalkActivity  com.swooby.alfredai D  onError(java.net.UnknownHostException: Unable to resolve host "api.openai.com": No address associated with hostname)
-2025-01-17 17:43:21.191 27419-27475 RealtimeClient      com.swooby.alfredai D  +disconnect()
-2025-01-17 17:43:21.191 27419-27475 RealtimeClient      com.swooby.alfredai D  -disconnect()
-2025-01-17 17:43:21.191 27419-27475 RealtimeClient      com.swooby.alfredai D  connect: ephemeralApiKey=null
-2025-01-17 17:43:21.191 27419-27475 PushToTalkActivity  com.swooby.alfredai D  onError(com.openai.infrastructure.ClientException: No Ephemeral API Key In Response)
-                        */
-                        "Mysterious \"Unable to resolve host `api.openai.com`\" error; Try again."
-                    }
-
-                    is ClientException -> {
-                        var message: String? = error.message ?: error.toString()
-                        val response = error.response as? ClientError<*>
-                        if (response != null) {
-                            var expectedJsonBody = response.body
-                            if (expectedJsonBody == null) {
-                                message = response.message
-                            }
-                            if (expectedJsonBody == null && message == null) {
-                                expectedJsonBody = "{ \"error\": { \"code\": \"-1\" }"
-                            }
-                            if (expectedJsonBody != null) {
-                                val jsonObject = JSONObject(expectedJsonBody.toString())
-                                val jsonError = jsonObject.getJSONObject("error")
-                                val errorCode = jsonError.getString("code")
-                                message = errorCode
-                            }
-                        }
-                        "ClientException: ${quote(message)}"
-                    }
-
-                    else -> "Error: ${error.message}"
-                }
-                showToast(
-                    context = context,
-                    text = text,
-                    duration = Toast.LENGTH_LONG,
-                    forceInvokeOnMain = true
-                )
-            }
-
-            override fun onConnected() {
-                Log.d(TAG, "onConnected()")
-                isConnected = true
-                jobConnect = null
-                if (debugToastVerbose) {
-                    showToast(context = context, text = "Connected", forceInvokeOnMain = true)
-                }
-                playAudioResourceOnce(context, R.raw.connected)
-            }
-
-            override fun onDisconnected() {
-                Log.d(TAG, "onDisconnected()")
-                disconnect(isClient = true)
-                if (debugToastVerbose) {
-                    showToast(context = context, text = "Disconnected", forceInvokeOnMain = true)
-                }
-                playAudioResourceOnce(context, R.raw.disconnected)
-            }
-
-            override fun onBinaryMessageReceived(data: ByteArray): Boolean {
-                //Log.d(TAG, "onBinaryMessageReceived(): data(${data.size})=...")
-                //...
-                return false
-            }
-
-            override fun onTextMessageReceived(message: String): Boolean {
-                //Log.d(TAG, "onTextMessageReceived(): message=${quote(message)}")
-                //...
-                return false
-            }
-
-            override fun onServerEventConversationCreated(realtimeServerEventConversationCreated: RealtimeServerEventConversationCreated) {
-            }
-
-            override fun onServerEventConversationItemCreated(realtimeServerEventConversationItemCreated: RealtimeServerEventConversationItemCreated) {
-            }
-
-            override fun onServerEventConversationItemDeleted(realtimeServerEventConversationItemDeleted: RealtimeServerEventConversationItemDeleted) {
-            }
-
-            override fun onServerEventConversationItemInputAudioTranscriptionCompleted(realtimeServerEventConversationItemInputAudioTranscriptionCompleted: RealtimeServerEventConversationItemInputAudioTranscriptionCompleted) {
-            }
-
-            override fun onServerEventConversationItemInputAudioTranscriptionFailed(realtimeServerEventConversationItemInputAudioTranscriptionFailed: RealtimeServerEventConversationItemInputAudioTranscriptionFailed) {
-            }
-
-            override fun onServerEventConversationItemTruncated(realtimeServerEventConversationItemTruncated: RealtimeServerEventConversationItemTruncated) {
-            }
-
-            override fun onServerEventError(realtimeServerEventError: RealtimeServerEventError) {
-                Log.d(TAG, "onServerEventError($realtimeServerEventError)")
-                val error = realtimeServerEventError.error
-                val text = error.message
-                showToast(
-                    context = context,
-                    text = text,
-                    duration = Toast.LENGTH_LONG,
-                    forceInvokeOnMain = true,
-                )
-            }
-
-            override fun onServerEventInputAudioBufferCleared(realtimeServerEventInputAudioBufferCleared: RealtimeServerEventInputAudioBufferCleared) {
-                Log.d(TAG, "onServerEventInputAudioBufferCleared($realtimeServerEventInputAudioBufferCleared)")
-            }
-
-            override fun onServerEventInputAudioBufferCommitted(realtimeServerEventInputAudioBufferCommitted: RealtimeServerEventInputAudioBufferCommitted) {
-                Log.d(TAG, "onServerEventInputAudioBufferCommitted($realtimeServerEventInputAudioBufferCommitted)")
-            }
-
-            override fun onServerEventInputAudioBufferSpeechStarted(realtimeServerEventInputAudioBufferSpeechStarted: RealtimeServerEventInputAudioBufferSpeechStarted) {
-                Log.d(TAG, "onServerEventInputAudioBufferSpeechStarted($realtimeServerEventInputAudioBufferSpeechStarted)")
-            }
-
-            override fun onServerEventInputAudioBufferSpeechStopped(realtimeServerEventInputAudioBufferSpeechStopped: RealtimeServerEventInputAudioBufferSpeechStopped) {
-                Log.d(TAG, "onServerEventInputAudioBufferSpeechStopped($realtimeServerEventInputAudioBufferSpeechStopped)")
-            }
-
-            override fun onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped: ServerEventOutputAudioBufferAudioStopped) {
-                Log.d(TAG, "onServerEventOutputAudioBufferAudioStopped($realtimeServerEventOutputAudioBufferAudioStopped)")
-                if (isCancelingResponse) {
-                    isCancelingResponse = false
-                    showToast(
-                        context = context,
-                        text = "Response canceled",
-                        duration = Toast.LENGTH_SHORT,
-                        forceInvokeOnMain = true,
-                    )
-                }
-            }
-
-            override fun onServerEventRateLimitsUpdated(realtimeServerEventRateLimitsUpdated: RealtimeServerEventRateLimitsUpdated) {
-                Log.d(TAG, "onServerEventRateLimitsUpdated($realtimeServerEventRateLimitsUpdated)")
-            }
-
-            override fun onServerEventResponseAudioDelta(realtimeServerEventResponseAudioDelta: RealtimeServerEventResponseAudioDelta) {
-                Log.d(TAG, "onServerEventResponseAudioDelta($realtimeServerEventResponseAudioDelta)")
-            }
-
-            override fun onServerEventResponseAudioDone(realtimeServerEventResponseAudioDone: RealtimeServerEventResponseAudioDone) {
-                Log.d(TAG, "onServerEventResponseAudioDone($realtimeServerEventResponseAudioDone)")
-            }
-
-            override fun onServerEventResponseAudioTranscriptDelta(realtimeServerEventResponseAudioTranscriptDelta: RealtimeServerEventResponseAudioTranscriptDelta) {
-            }
-
-            override fun onServerEventResponseAudioTranscriptDone(realtimeServerEventResponseAudioTranscriptDone: RealtimeServerEventResponseAudioTranscriptDone) {
-            }
-
-            override fun onServerEventResponseContentPartAdded(realtimeServerEventResponseContentPartAdded: RealtimeServerEventResponseContentPartAdded) {
-            }
-
-            override fun onServerEventResponseContentPartDone(realtimeServerEventResponseContentPartDone: RealtimeServerEventResponseContentPartDone) {
-            }
-
-            override fun onServerEventResponseCreated(realtimeServerEventResponseCreated: RealtimeServerEventResponseCreated) {
-            }
-
-            override fun onServerEventResponseDone(realtimeServerEventResponseDone: RealtimeServerEventResponseDone) {
-            }
-
-            override fun onServerEventResponseFunctionCallArgumentsDelta(realtimeServerEventResponseFunctionCallArgumentsDelta: RealtimeServerEventResponseFunctionCallArgumentsDelta) {
-                Log.d(TAG, "onServerEventResponseFunctionCallArgumentsDelta($realtimeServerEventResponseFunctionCallArgumentsDelta)")
-            }
-
-            override fun onServerEventResponseFunctionCallArgumentsDone(realtimeServerEventResponseFunctionCallArgumentsDone: RealtimeServerEventResponseFunctionCallArgumentsDone) {
-                Log.d(TAG, "onServerEventResponseFunctionCallArgumentsDone($realtimeServerEventResponseFunctionCallArgumentsDone)")
-            }
-
-            override fun onServerEventResponseOutputItemAdded(realtimeServerEventResponseOutputItemAdded: RealtimeServerEventResponseOutputItemAdded) {
-                Log.d(TAG, "onServerEventResponseOutputItemAdded($realtimeServerEventResponseOutputItemAdded)")
-            }
-
-            override fun onServerEventResponseOutputItemDone(realtimeServerEventResponseOutputItemDone: RealtimeServerEventResponseOutputItemDone) {
-                Log.d(TAG, "onServerEventResponseOutputItemDone($realtimeServerEventResponseOutputItemDone)")
-            }
-
-            override fun onServerEventResponseTextDelta(realtimeServerEventResponseTextDelta: RealtimeServerEventResponseTextDelta) {
-                Log.d(TAG, "onServerEventResponseTextDelta($realtimeServerEventResponseTextDelta)")
-            }
-
-            override fun onServerEventResponseTextDone(realtimeServerEventResponseTextDone: RealtimeServerEventResponseTextDone) {
-                Log.d(TAG, "onServerEventResponseTextDone($realtimeServerEventResponseTextDone)")
-            }
-
-            override fun onServerEventSessionCreated(realtimeServerEventSessionCreated: RealtimeServerEventSessionCreated) {
-                Log.d(TAG, "onServerEventSessionCreated($realtimeServerEventSessionCreated)")
-                if (debugToastVerbose) {
-                    showToast(context = context, text = "Session Created", forceInvokeOnMain = true)
-                }
-            }
-
-            override fun onServerEventSessionUpdated(realtimeServerEventSessionUpdated: RealtimeServerEventSessionUpdated) {
-                Log.d(TAG, "onServerEventSessionUpdated($realtimeServerEventSessionUpdated)")
-                if (debugToastVerbose) {
-                    showToast(context = context, text = "Session Updated", forceInvokeOnMain = true)
-                }
-            }
-
-            override fun onServerEventSessionExpired(realtimeServerEventError: RealtimeServerEventError) {
-                Log.d(TAG, "onServerEventSessionExpired($realtimeServerEventError)")
-                val text = "Session Expired: ${realtimeServerEventError.error.message}"
-                showToast(context = context, text = text, forceInvokeOnMain = true)
-            }
-        }
-
-        mobileViewModel?.addListener(realtimeClientListener)
-
-        onDispose {
-            mobileViewModel?.removeListener(realtimeClientListener)
-        }
-    }
     //
     //endregion
     //
@@ -687,29 +271,24 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                     actions = {
                         if (showPreferences) {
                             TextButton(onClick = {
-                                jobConnect = onSaveButtonClick?.invoke()
+                                onSaveButtonClick?.invoke()
                             }) {
                                 Text("Save")
                             }
                         } else {
                             Switch(
-                                checked = isConnectSwitchOn,
+                                checked = isConnectingOrConnected.value,
                                 onCheckedChange = { newValue ->
                                     if (newValue) {
-                                        // Re-check here to handle case of coming back from Settings app
-                                        hasAllRequiredPermissions = requiredPermissions.all {
-                                            checkSelfPermission(
-                                                context,
-                                                it
-                                            ) == PackageManager.PERMISSION_GRANTED
-                                        }
-                                        if (hasAllRequiredPermissions) {
-                                            connect()
+                                        if (hasAllRequiredPermissions.value) {
+                                            Log.i(TAG, "Manual Connect!")
+                                            mobileViewModel.connect()
                                         } else {
-                                            requestPermissionsLauncher.launch(requiredPermissions)
+                                            requestPermissionsLauncher.launch(mobileViewModel.requiredPermissions)
                                         }
                                     } else {
-                                        disconnect(isManual = true)
+                                        Log.i(TAG, "Manual Disconnect!")
+                                        mobileViewModel.disconnect(isManual = true)
                                     }
                                 }
                             )
@@ -729,6 +308,11 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                 )
             }
         ) { innerPadding ->
+
+            if (isConnected.value) {
+                KeepScreenOnComposable()
+            }
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -744,21 +328,19 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                     PushToTalkPreferenceScreen(
                         mobileViewModel = mobileViewModel,
                         onSaveSuccess = {
-                            showPreferences = !(mobileViewModel?.isConfigured ?: false)
+                            showPreferences = !isConfigured.value
                         },
                         setSaveButtonCallback = {
                             onSaveButtonClick = it
                         },
                     )
                 } else {
-                    BackHandler(enabled = jobConnect != null) {
-                        disconnect(isManual = true)
+                    BackHandler(enabled = isConnectingOrConnected.value) {
+                        mobileViewModel.disconnect(isManual = true)
                     }
                     LaunchedEffect(Unit) {
-                        if (hasAllRequiredPermissions) {
-                            connectIfAutoConnectAndNotManualOff()
-                        } else {
-                            requestPermissionsLauncher.launch(requiredPermissions)
+                        if (!hasAllRequiredPermissions.value) {
+                            requestPermissionsLauncher.launch(mobileViewModel.requiredPermissions)
                         }
                     }
 
@@ -967,11 +549,8 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                 var inputText by remember { mutableStateOf("") }
 
                                 fun doSendInputText() {
-                                    mobileViewModel?.realtimeClient?.also { realtimeClient ->
-                                        realtimeClient.dataSendConversationItemCreate(inputText.trim())
-                                        realtimeClient.dataSendResponseCreate()
-                                        inputText = ""
-                                    }
+                                    mobileViewModel?.sendText(inputText)
+                                    inputText = ""
                                 }
 
                                 TextField(
@@ -991,13 +570,13 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                         },
                                     keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Default),
                                     singleLine = false,
-                                    enabled = isConnected,
+                                    enabled = isConnected.value,
                                     label = { Text("Text Input") },
                                     value = inputText,
                                     onValueChange = { inputText = it },
                                     trailingIcon = {
                                         IconButton(
-                                            enabled = isConnected && inputText.trim().isNotBlank(),
+                                            enabled = isConnected.value && inputText.trim().isNotBlank(),
                                             onClick = { doSendInputText() }
                                         ) {
                                             Icon(
@@ -1029,20 +608,19 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                             modifier = Modifier
                                 .border(
                                     4.dp,
-                                    if (isConnected) MaterialTheme.colorScheme.primary else disabledColor,
+                                    if (isConnected.value) MaterialTheme.colorScheme.primary else disabledColor,
                                     shape = CircleShape
                                 ),
                         ) {
                             IconButton(
-                                enabled = isConnected && !isCancelingResponse,
+                                enabled = isConnected.value && !isCancelingResponse.value,
                                 onClick = {
-                                    disconnect()
-                                    connect()
                                     showToast(
                                         context = context,
                                         text = "Reconnecting",
                                         forceInvokeOnMain = true,
                                     )
+                                    mobileViewModel?.reconnect()
                                 },
                                 modifier = Modifier
                                     .size(66.dp)
@@ -1073,12 +651,9 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                 .size(150.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            if (isConnected) {
-                                KeepScreenOnComposable()
-                            }
                             Box {
                                 when {
-                                    isConnected -> {
+                                    isConnected.value -> {
                                         CircularProgressIndicator(
                                             progress = { 1f },
                                             color = Color.Green,
@@ -1087,7 +662,7 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                         )
                                     }
 
-                                    isConnectingOrConnected -> {
+                                    isConnectingOrConnected.value -> {
                                         CircularProgressIndicator(
                                             color = MaterialTheme.colorScheme.primary,
                                             strokeWidth = 6.dp,
@@ -1107,12 +682,12 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                             }
                             PushToTalkButton(
                                 mobileViewModel = mobileViewModel,
-                                enabled = isConnected && !isCancelingResponse,
+                                enabled = isConnected.value && !isCancelingResponse.value,
                                 onPushToTalkStart = {
-                                    mobileViewModel?.pushToTalk(true)
+                                    mobileViewModel.pushToTalk(true)
                                 },
                                 onPushToTalkStop = {
-                                    mobileViewModel?.pushToTalk(false)
+                                    mobileViewModel.pushToTalk(false)
                                 },
                             )
                         }
@@ -1130,20 +705,18 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                             modifier = Modifier
                                 .border(
                                     4.dp,
-                                    if (isConnected) MaterialTheme.colorScheme.primary else disabledColor,
+                                    if (isConnected.value) MaterialTheme.colorScheme.primary else disabledColor,
                                     shape = CircleShape
                                 ),
                         ) {
                             IconButton(
-                                enabled = isConnected && !isCancelingResponse,
+                                enabled = isConnected.value && !isCancelingResponse.value,
                                 onClick = {
-                                    mobileViewModel?.realtimeClient?.also { realtimeClient ->
-                                        // If true, will be set back to false in onServerEventOutputAudioBufferAudioStopped
-                                        isCancelingResponse =
-                                            realtimeClient.dataSendResponseCancel()
-                                        /*
-                                        It takes a REALLY long time for `output_audio_buffer.audio_stopped` to be received.
-                                        I have seen it take up to 20 seconds (proportional to the amount of speech in response)
+                                    // If true, will be set back to false in onServerEventOutputAudioBufferAudioStopped
+                                    mobileViewModel.sendCancelResponse()
+                                    /*
+                                    It takes a REALLY long time for `output_audio_buffer.audio_stopped` to be received.
+                                    I have seen it take up to 20 seconds (proportional to the amount of speech in response)
 2025-01-22 16:38:45.287 17703-17703 RealtimeClient          com.swooby.alfredai                  D  dataSend: text="{"type":"response.cancel","event_id":"evt_SbrzipkcoeecHwabk"}"
 ...
 2025-01-22 16:38:45.590 17703-17785 RealtimeClient          com.swooby.alfredai                  D  onDataChannelText: type="response.audio.done"
@@ -1159,14 +732,13 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
 ...
 2025-01-22 16:38:51.975 17703-17785 RealtimeClient          com.swooby.alfredai                  D  onDataChannelText: type="output_audio_buffer.audio_stopped"
 2025-01-22 16:38:51.976 17703-17785 RealtimeClient          com.swooby.alfredai                  W  onDataChannelText: unknown type=output_audio_buffer.audio_stopped
-                                         */
-                                        if (isCancelingResponse) {
-                                            showToast(
-                                                context = context,
-                                                text = "Cancelling Response; this can take a long time to complete.",
-                                                duration = Toast.LENGTH_LONG,
-                                            )
-                                        }
+                                    */
+                                    if (isCancelingResponse.value) {
+                                        showToast(
+                                            context = context,
+                                            text = "Cancelling Response; this can take a long time to complete.",
+                                            duration = Toast.LENGTH_LONG,
+                                        )
                                     }
                                 },
                                 modifier = Modifier
@@ -1186,9 +758,9 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                         //
                     }
 
-                    val audioDevices = mobileViewModel?.audioDevices
-                    val selectedAudioDevice = mobileViewModel?.selectedAudioDevice
-                    if (audioDevices?.isEmpty() == false && selectedAudioDevice != null) {
+                    val audioDevices = mobileViewModel.audioDevices.collectAsState()
+                    val selectedAudioDevice = mobileViewModel.selectedAudioDevice.collectAsState()
+                    if (audioDevices.value.isNotEmpty() && selectedAudioDevice.value != null) {
                         var expanded by remember { mutableStateOf(false) }
                         ExposedDropdownMenuBox(
                             expanded = expanded,
@@ -1196,7 +768,7 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                         ) {
                             TextField(
                                 readOnly = true,
-                                value = selectedAudioDevice.name,
+                                value = selectedAudioDevice.value!!.name,
                                 onValueChange = { /* read-only; ignore */ },
                                 label = { Text("Audio Device") },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
@@ -1211,7 +783,7 @@ fun MobileApp(mobileViewModel: MobileViewModel? = null) {
                                 expanded = expanded,
                                 onDismissRequest = { expanded = false }
                             ) {
-                                audioDevices.forEach { audioDevice ->
+                                audioDevices.value.forEach { audioDevice ->
                                     DropdownMenuItem(
                                         text = { Text(audioDevice.name) },
                                         onClick = {
@@ -1242,22 +814,4 @@ fun KeepScreenOnComposable() {
             view.keepScreenOn = false
         }
     }
-}
-
-@Preview(
-    uiMode = Configuration.UI_MODE_NIGHT_NO,
-    showBackground = true
-)
-@Composable
-fun PushToTalkButtonActivityPreviewLight() {
-    MobileApp()
-}
-
-@Preview(
-    uiMode = Configuration.UI_MODE_NIGHT_YES,
-    showBackground = true
-)
-@Composable
-fun PushToTalkButtonActivityPreviewDark() {
-    MobileApp()
 }

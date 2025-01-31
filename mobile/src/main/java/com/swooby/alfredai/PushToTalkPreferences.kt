@@ -57,9 +57,6 @@ import com.swooby.alfredai.PushToTalkPreferences.Companion.instructionsDefault
 import com.swooby.alfredai.PushToTalkPreferences.Companion.instructionsDefaultAlfredAI
 import com.swooby.alfredai.PushToTalkPreferences.Companion.instructionsDefaultOpenAI
 import com.swooby.alfredai.ui.theme.AlfredAITheme
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 
 class PushToTalkPreferences(context: Context) {
     companion object {
@@ -245,7 +242,7 @@ class PushToTalkPreferences(context: Context) {
 @Composable
 fun PushToTalkButtonPreferencesPreviewLight() {
     AlfredAITheme(dynamicColor = false) {
-        PushToTalkPreferenceScreen()
+        PushToTalkPreferenceScreen(MobileViewModelPreview())
     }
 }
 
@@ -256,25 +253,25 @@ fun PushToTalkButtonPreferencesPreviewLight() {
 @Composable
 fun PushToTalkButtonPreferencesPreviewDark() {
     AlfredAITheme(dynamicColor = false) {
-        PushToTalkPreferenceScreen()
+        PushToTalkPreferenceScreen(MobileViewModelPreview())
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PushToTalkPreferenceScreen(
-    mobileViewModel: MobileViewModel? = null,
+    mobileViewModel: MobileViewModelInterface,
     onSaveSuccess: (() -> Unit)? = null,
-    setSaveButtonCallback: (((() -> Job?)?) -> Unit)? = null,
+    setSaveButtonCallback: (((() -> Unit)?) -> Unit)? = null,
 ) {
-    val initialAutoConnect by (mobileViewModel?.autoConnect ?: MutableStateFlow(PushToTalkPreferences.autoConnectDefault).asStateFlow()).collectAsState()
-    val initialApiKey by (mobileViewModel?.apiKey ?: MutableStateFlow(PushToTalkPreferences.apiKeyDefault).asStateFlow()).collectAsState()
-    val initialModel by (mobileViewModel?.model ?: MutableStateFlow(PushToTalkPreferences.modelDefault).asStateFlow()).collectAsState()
-    val initialInstructions by (mobileViewModel?.instructions ?: MutableStateFlow(PushToTalkPreferences.instructionsDefault).asStateFlow()).collectAsState()
-    val initialVoice by (mobileViewModel?.voice ?: MutableStateFlow(PushToTalkPreferences.voiceDefault).asStateFlow()).collectAsState()
-    val initialInputAudioTranscription by (mobileViewModel?.inputAudioTranscription ?: MutableStateFlow(PushToTalkPreferences.inputAudioTranscriptionDefault).asStateFlow()).collectAsState()
-    val initialTemperature by (mobileViewModel?.temperature ?: MutableStateFlow(PushToTalkPreferences.temperatureDefault).asStateFlow()).collectAsState()
-    val initialMaxResponseOutputTokens by (mobileViewModel?.maxResponseOutputTokens ?: MutableStateFlow(PushToTalkPreferences.maxResponseOutputTokensDefault).asStateFlow()).collectAsState()
+    val initialAutoConnect by mobileViewModel.autoConnect.collectAsState()
+    val initialApiKey by mobileViewModel.apiKey.collectAsState()
+    val initialModel by mobileViewModel.model.collectAsState()
+    val initialInstructions by mobileViewModel.instructions.collectAsState()
+    val initialVoice by mobileViewModel.voice.collectAsState()
+    val initialInputAudioTranscription by mobileViewModel.inputAudioTranscription.collectAsState()
+    val initialTemperature by mobileViewModel.temperature.collectAsState()
+    val initialMaxResponseOutputTokens by mobileViewModel.maxResponseOutputTokens.collectAsState()
 
     var editedAutoConnect by remember { mutableStateOf(initialAutoConnect) }
     var editedApiKey by remember { mutableStateOf(initialApiKey) }
@@ -287,8 +284,8 @@ fun PushToTalkPreferenceScreen(
 
     var lastMaxResponseOutputTokens by remember { mutableStateOf(editedMaxResponseOutputTokens) }
 
-    val saveOperation: () -> Job? = {
-        val job = mobileViewModel?.updatePreferences(
+    val saveOperation: () -> Unit = {
+        mobileViewModel.updatePreferences(
             editedAutoConnect,
             editedApiKey,
             editedModel,
@@ -299,7 +296,6 @@ fun PushToTalkPreferenceScreen(
             editedMaxResponseOutputTokens,
         )
         onSaveSuccess?.invoke()
-        job
     }
 
     LaunchedEffect(Unit) {

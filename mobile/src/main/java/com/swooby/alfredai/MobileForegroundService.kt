@@ -15,7 +15,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import androidx.core.graphics.drawable.IconCompat
 import com.swooby.alfredai.AppUtils.showToast
-import com.swooby.alfredai.MobileViewModel.ConnectionState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -74,7 +73,7 @@ class MobileForegroundService : Service() {
         Log.d(TAG, "onCreate()")
         super.onCreate()
         createNotificationChannel()
-        observeConnectionStateForNotifications()
+        observeConnectionState()
     }
 
     override fun onDestroy() {
@@ -89,16 +88,16 @@ class MobileForegroundService : Service() {
         when (intent?.action) {
             ACTION_DISCONNECT -> {
                 Log.i(TAG, "onStartCommand: ACTION_DISCONNECT")
-                disconnectAndStopForegroundService()
+                disconnectAndStopForegroundService(isManual = true)
             }
         }
         return START_STICKY
     }
 
-    private fun observeConnectionStateForNotifications() {
+    private fun observeConnectionState() {
         serviceScope.launch {
-            mobileViewModel.connectionStateFlow.collect { connectionState ->
-                Log.i(TAG, "connectionStateFlow: connectionState=$connectionState")
+            mobileViewModel.connectionState.collect { connectionState ->
+                Log.i(TAG, "observeConnectionState: connectionState=$connectionState")
                 showNotification(connectionState)
             }
         }
@@ -197,25 +196,28 @@ class MobileForegroundService : Service() {
                     contentText = "Connected to $CONNECTION_NAME"
                 )
             }
+            ConnectionState.Disconnecting -> {
+                // ignore
+            }
             ConnectionState.Disconnected -> {
                 disconnectAndStopForegroundService()
             }
         }
     }
 
-    private fun disconnectAndStopForegroundService() {
-        Log.d(TAG, "disconnectAndStopForegroundService()")
+    private fun disconnectAndStopForegroundService(isManual: Boolean = false) {
+        Log.d(TAG, "disconnectAndStopForegroundService(isManual=$isManual)")
         if (isForegroundStarted) {
             isForegroundStarted = false
-            Log.d(TAG, "disconnectAndStopForegroundService: disconnecting")
-            mobileViewModel.disconnect()
-            Log.d(TAG, "disconnectAndStopForegroundService: showing disconnected notification")
+            Log.d(TAG, "disconnectAndStopForegroundService: Disconnect")
+            mobileViewModel.disconnect(isManual = isManual)
+            Log.d(TAG, "disconnectAndStopForegroundService: Show disconnected notification")
             updateNotification(
                 contentTitle = "AlfredAI: Disconnected",
                 contentText = "Disconnected from $CONNECTION_NAME"
             )
-            Log.d(TAG, "disconnectAndStopForegroundService: stopping foreground service")
-            stopForeground(STOP_FOREGROUND_REMOVE)
+            Log.d(TAG, "disconnectAndStopForegroundService: Stop foreground service")
+            stopForeground(STOP_FOREGROUND_DETACH)
             stopSelf()
         }
     }
