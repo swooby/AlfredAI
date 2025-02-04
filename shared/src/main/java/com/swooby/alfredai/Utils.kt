@@ -6,7 +6,11 @@ import android.media.AudioManager
 import android.media.MediaPlayer
 import android.util.JsonReader
 import android.util.Log
+import android.widget.Toast
 import androidx.wear.phone.interactions.PhoneTypeHelper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.IOException
 import java.io.StringReader
 import kotlin.reflect.KClass
@@ -153,6 +157,19 @@ object Utils {
 
             else
                 -> permission
+        }
+    }
+
+    fun showToast(context: Context,
+                  text: String,
+                  duration: Int = Toast.LENGTH_SHORT,
+                  forceInvokeOnMain: Boolean = false) {
+        if (forceInvokeOnMain) {
+            CoroutineScope(Dispatchers.Main).launch {
+                showToast(context, text, duration, false)
+            }
+        } else {
+            Toast.makeText(context, text, duration).show()
         }
     }
 }

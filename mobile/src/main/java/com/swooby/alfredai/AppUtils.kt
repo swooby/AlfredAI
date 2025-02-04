@@ -29,19 +29,6 @@ import org.jsoup.nodes.TextNode
 object AppUtils {
     private val TAG = AppUtils::class.java.simpleName
 
-    fun showToast(context: Context,
-                  text: String,
-                  duration: Int = Toast.LENGTH_SHORT,
-                  forceInvokeOnMain: Boolean = false) {
-        if (forceInvokeOnMain) {
-            CoroutineScope(Dispatchers.Main).launch {
-                showToast(context, text, duration, false)
-            }
-        } else {
-            Toast.makeText(context, text, duration).show()
-        }
-    }
-
     @Composable
     fun annotatedStringFromHtml(resId: Int): AnnotatedString {
         return annotatedStringFromHtml(stringResource(id = resId))

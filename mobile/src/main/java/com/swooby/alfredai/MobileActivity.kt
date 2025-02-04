@@ -89,9 +89,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
-import com.swooby.alfredai.AppUtils.showToast
 import com.swooby.alfredai.Utils.getFriendlyPermissionName
 import com.swooby.alfredai.Utils.quote
+import com.swooby.alfredai.Utils.showToast
 import com.swooby.alfredai.ui.theme.AlfredAITheme
 import kotlinx.coroutines.flow.collectLatest
 

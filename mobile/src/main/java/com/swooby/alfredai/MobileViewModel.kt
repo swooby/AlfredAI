@@ -65,13 +65,13 @@ import com.openai.models.RealtimeSessionInputAudioTranscription
 import com.openai.models.RealtimeSessionModel
 import com.openai.models.RealtimeSessionTools
 import com.openai.models.RealtimeSessionVoice
-import com.swooby.alfredai.AppUtils.showToast
 import com.swooby.alfredai.PushToTalkPreferences.Companion.getMaxResponseOutputTokens
 import com.swooby.alfredai.Utils.audioManagerScoStateToString
 import com.swooby.alfredai.Utils.bluetoothHeadsetStateToString
 import com.swooby.alfredai.Utils.playAudioResourceOnce
 import com.swooby.alfredai.Utils.quote
 import com.swooby.alfredai.Utils.redact
+import com.swooby.alfredai.Utils.showToast
 import com.swooby.alfredai.openai.realtime.RealtimeClient
 import com.swooby.alfredai.openai.realtime.RealtimeClient.RealtimeClientListener
 import com.swooby.alfredai.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
@@ -190,6 +190,8 @@ class MobileViewModel(application: Application) :
         get() = "MOBILE"
     override val remoteCapabilityName: String
         get() = "verify_remote_alfredai_wear_app"
+
+    private val functionsManager = FunctionsManager(application)
 
     private var jobDebugFakeSessionExpired: Job? = null
 
@@ -351,7 +353,8 @@ class MobileViewModel(application: Application) :
                 outputAudioFormat = null,
                 inputAudioTranscription = inputAudioTranscription.value,
                 turnDetection = PushToTalkPreferences.turnDetectionDefault,
-                tools = functions,
+                // TODO: Show these as selectable in Preferences?
+                tools = functionsManager.getFunctions(),
                 toolChoice = null,
                 temperature = BigDecimal(temperature.value.toDouble()),
                 maxResponseOutputTokens = getMaxResponseOutputTokens(maxResponseOutputTokens.value),
@@ -1524,7 +1527,7 @@ class MobileViewModel(application: Application) :
             if (conversationItem != null) {
                 val functionName = conversationItem.functionName
                 val functionArguments = JSONObject(conversationItem.functionArguments)
-                val functionOutput = runFunction(functionName, functionArguments)
+                val functionOutput = functionsManager.run(functionName, functionArguments)
                 conversationItem.functionOutput = functionOutput
                 realtimeClient?.dataSendConversationItemCreateFunctionCallOutput(
                     callId = conversationItem.functionCallId,
@@ -1667,72 +1670,5 @@ class MobileViewModel(application: Application) :
 
     //
     //endregion
-    //
-
-    //
-    //region Functions
-    //
-
-    //
-    // https://platform.openai.com/docs/api-reference/realtime-sessions/create#realtime-sessions-create-tools
-    // https://platform.openai.com/docs/guides/function-calling
-    //
-
-    private data class FunctionInfo(
-        val function: (JSONObject) -> String,
-        val tool: RealtimeSessionTools,
-    )
-
-    private val functionsMap = mapOf(
-        "taskCreate" to FunctionInfo(
-            function = ::functionTaskCreate,
-            tool = RealtimeSessionTools(
-                type = RealtimeSessionTools.Type.function,
-                name = "taskCreate",
-                description = "Create a task",
-                parameters = mapOf(
-                    "type" to "object",
-                    "properties" to mapOf(
-                        "name" to mapOf(
-                            "type" to "string",
-                            "description" to "The task name"
-                        ),
-                        "time" to mapOf(
-                            "type" to "string",
-                            "description" to "The task time"
-                        ),
-                    ),
-                    "required" to listOf("name"),
-                )
-            )
-        ),
-    )
-
-    private val functions = functionsMap.values.map { it.tool }
-
-    private fun runFunction(name: String, arguments: JSONObject): String {
-        val functionInfo = functionsMap[name]
-        if (functionInfo == null) {
-            Log.e(TAG, "onServerEventResponseFunctionCallArgumentsDone: Unknown function name=${quote(name)}")
-            return ""
-        }
-        val result = functionInfo.function(arguments)
-        return result
-    }
-
-    private fun functionTaskCreate(arguments: JSONObject): String {
-        Log.d(TAG, "+functionTaskCreate(arguments=$arguments)")
-        //...
-        val context: Context = getApplication()
-        showToast(context, "TODO: Create task with arguments=$arguments", forceInvokeOnMain = true)
-        //...
-        val output = "success"
-        //...
-        Log.d(TAG, "-functionTaskCreate(arguments=$arguments); output=$output")
-        return output
-    }
-
-    //
-    //
     //
 }
