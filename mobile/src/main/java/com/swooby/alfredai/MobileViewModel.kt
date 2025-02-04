@@ -28,6 +28,7 @@ import androidx.lifecycle.viewModelScope
 import com.openai.infrastructure.ApiClient
 import com.openai.infrastructure.ClientError
 import com.openai.infrastructure.ClientException
+import com.openai.models.RealtimeConversationItem
 import com.openai.models.RealtimeResponse
 import com.openai.models.RealtimeResponseStatusDetails
 import com.openai.models.RealtimeServerEventConversationCreated
@@ -62,9 +63,12 @@ import com.openai.models.RealtimeServerEventSessionUpdated
 import com.openai.models.RealtimeSessionCreateRequest
 import com.openai.models.RealtimeSessionInputAudioTranscription
 import com.openai.models.RealtimeSessionModel
+import com.openai.models.RealtimeSessionTools
 import com.openai.models.RealtimeSessionVoice
 import com.swooby.alfredai.AppUtils.showToast
 import com.swooby.alfredai.PushToTalkPreferences.Companion.getMaxResponseOutputTokens
+import com.swooby.alfredai.Utils.audioManagerScoStateToString
+import com.swooby.alfredai.Utils.bluetoothHeadsetStateToString
 import com.swooby.alfredai.Utils.playAudioResourceOnce
 import com.swooby.alfredai.Utils.quote
 import com.swooby.alfredai.Utils.redact
@@ -72,6 +76,10 @@ import com.swooby.alfredai.openai.realtime.RealtimeClient
 import com.swooby.alfredai.openai.realtime.RealtimeClient.RealtimeClientListener
 import com.swooby.alfredai.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
 import com.twilio.audioswitch.AudioDevice
+import com.twilio.audioswitch.AudioDevice.BluetoothHeadset
+import com.twilio.audioswitch.AudioDevice.Earpiece
+import com.twilio.audioswitch.AudioDevice.Speakerphone
+import com.twilio.audioswitch.AudioDevice.WiredHeadset
 import com.twilio.audioswitch.AudioSwitch
 import com.twilio.audioswitch.bluetooth.BluetoothHeadsetConnectionListener
 import kotlinx.coroutines.Dispatchers
@@ -166,8 +174,8 @@ class MobileViewModel(application: Application) :
                 conversationItems.add(
                     ConversationItem(
                         id = "$i",
-                        speaker = MobileViewModel.ConversationSpeaker.entries.random(),
-                        initialText = generateRandomSentence((5..30).random())
+                        type = MobileViewModel.ConversationItemType.entries.random(),
+                        initialText = generateRandomSentence((5..30).random()),
                     )
                 )
             }
@@ -342,7 +350,7 @@ class MobileViewModel(application: Application) :
                 outputAudioFormat = null,
                 inputAudioTranscription = inputAudioTranscription.value,
                 turnDetection = PushToTalkPreferences.turnDetectionDefault,
-                tools = null,
+                tools = functions,
                 toolChoice = null,
                 temperature = BigDecimal(temperature.value.toDouble()),
                 maxResponseOutputTokens = getMaxResponseOutputTokens(maxResponseOutputTokens.value),
@@ -538,7 +546,7 @@ class MobileViewModel(application: Application) :
                         delay(debugConnectDelayMillis)
                     }
                     ephemeralApiKey = realtimeClient?.connect()
-                    Log.d(TAG, "ephemeralApiKey=${quote(redact(ephemeralApiKey))}")
+                    Log.d(TAG, "ephemeralApiKey=${quote(redact(ephemeralApiKey, dangerousNullOK = true))}")
                     if (ephemeralApiKey == null) {
                         Log.e(TAG, "Failed to obtain ephemeral API key")
                     }
@@ -758,6 +766,7 @@ class MobileViewModel(application: Application) :
             }
         }
     }
+
     //
     //endregion
     //
@@ -768,7 +777,7 @@ class MobileViewModel(application: Application) :
 
     override fun sendText(message: String) {
         realtimeClient?.also { realtimeClient ->
-            realtimeClient.dataSendConversationItemCreate(message.trim())
+            realtimeClient.dataSendConversationItemCreateMessageInputText(message.trim())
             realtimeClient.dataSendResponseCreate()
         }
     }
@@ -829,21 +838,27 @@ class MobileViewModel(application: Application) :
     //region Conversation
     //
 
-    enum class ConversationSpeaker {
+    enum class ConversationItemType {
         Local,
         Remote,
+        Function,
     }
 
     data class ConversationItem(
         val id: String?,
-        val speaker: ConversationSpeaker,
+        val type: ConversationItemType,
         val initialText: String,
         val timestamp: Instant = Instant.now(),
+        var incomplete: Boolean = false,
+        val functionCallId: String = "",
+        val functionName: String = "",
+        var functionArguments: String = "",
+        var functionOutput: String = "",
     ) {
         var text by mutableStateOf(initialText)
 
         override fun toString(): String {
-            return "ConversationItem(id=${quote(id)}, speaker=$speaker, timestamp=$timestamp, text=${quote(text)})"
+            return "ConversationItem(id=${quote(id)}, type=$type, timestamp=$timestamp, incomplete=$incomplete, text=${quote(text)}, functionCallId=${quote(functionCallId)}, functionName=${quote(functionName)}, functionArguments=${quote(functionArguments)}, functionOutput=${quote(functionOutput)})"
         }
     }
 
@@ -880,15 +895,15 @@ class MobileViewModel(application: Application) :
         return conversationItem
     }
 
-    private fun conversationItemFindById(id: String): Pair<Int, ConversationItem?> {
+    private fun conversationItemFindById(id: String, debugLog: Boolean = true): Pair<Int, ConversationItem?> {
         val index = _conversationItems.indexOfFirst { it.id == id }
         val pair = if (index == -1) {
             Pair(-1, null)
         } else {
             Pair(index, _conversationItems[index])
         }
-        if (debugLogConversation) {
-            Log.w(TAG, "conversationItemFindById(${quote(id)})=$pair")
+        if (debugLog && debugLogConversation) {
+            Log.w(TAG, "conversationItemFindById(${quote(id)})=(index=${pair.first}, conversationItem=${pair.second})")
         }
         return pair
     }
@@ -898,7 +913,7 @@ class MobileViewModel(application: Application) :
             Log.e(TAG, "conversationItemAdd(caller=${quote(caller)}, $conversationItem)")
         }
         _conversationItems.add(conversationItem)
-        if (conversationItem.speaker == ConversationSpeaker.Remote) {
+        if (conversationItem.type == ConversationItemType.Remote) {
             conversationCurrentItemSet(caller, conversationItem)
         }
     }
@@ -1030,6 +1045,17 @@ class MobileViewModel(application: Application) :
     //
 
     private val listeners = mutableListOf<RealtimeClientListener>()
+
+    @Suppress("unused")
+    fun addListener(listener: RealtimeClientListener) {
+        listeners.add(listener)
+    }
+
+    @Suppress("unused")
+    fun removeListener(listener: RealtimeClientListener) {
+        listeners.remove(listener)
+    }
+
     private val listener = object : RealtimeClientListener {
         override fun onConnecting() {
             Log.d(TAG, "onConnecting()")
@@ -1161,140 +1187,161 @@ class MobileViewModel(application: Application) :
             return false
         }
 
-        override fun onServerEventConversationCreated(realtimeServerEventConversationCreated: RealtimeServerEventConversationCreated) {
+        override fun onServerEventConversationCreated(message: RealtimeServerEventConversationCreated) {
             if (debugLogConversation) {
-                Log.d(TAG, "onServerEventConversationCreated($realtimeServerEventConversationCreated)")
+                Log.d(TAG, "onServerEventConversationCreated($message)")
             }
             listeners.forEach {
-                it.onServerEventConversationCreated(realtimeServerEventConversationCreated)
+                it.onServerEventConversationCreated(message)
             }
         }
 
-        override fun onServerEventConversationItemCreated(realtimeServerEventConversationItemCreated: RealtimeServerEventConversationItemCreated) {
+        override fun onServerEventConversationItemCreated(message: RealtimeServerEventConversationItemCreated) {
             if (debugLogConversation) {
-                Log.d(TAG, "onServerEventConversationItemCreated($realtimeServerEventConversationItemCreated)")
+                Log.d(TAG, "onServerEventConversationItemCreated($message)")
             }
-            val item = realtimeServerEventConversationItemCreated.item
-            val id = item.id
-            val content = item.content
-            val text = content?.joinToString(separator = "") { it.text ?: "" } ?: ""
-            if (text.isNotBlank()) {
-                conversationItemAdd(
-                    "onServerEventConversationItemCreated",
-                    ConversationItem(
-                        id = id,
-                        speaker = ConversationSpeaker.Local,
-                        initialText = text
+            val item = message.item
+            val itemId = item.id
+            when (item.type) {
+                RealtimeConversationItem.Type.function_call -> {
+                    val functionCallId = item.callId!!
+                    val functionName = item.name!!
+                    val functionArguments = item.arguments!!
+                    Log.i(TAG, "onServerEventConversationItemCreated: id=${quote(itemId)} function_call callId=${quote(functionCallId)}, name=${quote(functionName)}, arguments=${quote(functionArguments)}")
+                    val conversationItem = ConversationItem(
+                        id = itemId,
+                        type = ConversationItemType.Function,
+                        initialText = "Function: `$functionName`",
+                        functionCallId = functionCallId,
+                        functionName = functionName,
+                        functionArguments = functionArguments,
                     )
-                )
+                    conversationItemAdd(
+                        "onServerEventConversationItemCreated",
+                        conversationItem
+                    )
+                }
+                RealtimeConversationItem.Type.message -> {
+                    val content = item.content
+                    val text = content?.joinToString(separator = "") { it.text ?: "" } ?: ""
+                    if (text.isNotBlank()) {
+                        conversationItemAdd(
+                            "onServerEventConversationItemCreated",
+                            ConversationItem(
+                                id = itemId,
+                                type = ConversationItemType.Local,
+                                initialText = text,
+                            )
+                        )
+                    }
+                }
+                else -> { /* ignore */ }
             }
             listeners.forEach {
-                it.onServerEventConversationItemCreated(realtimeServerEventConversationItemCreated)
+                it.onServerEventConversationItemCreated(message)
             }
         }
 
-        override fun onServerEventConversationItemDeleted(realtimeServerEventConversationItemDeleted: RealtimeServerEventConversationItemDeleted) {
+        override fun onServerEventConversationItemDeleted(message: RealtimeServerEventConversationItemDeleted) {
             if (debugLogConversation) {
-                Log.d(TAG, "onServerEventConversationItemDeleted($realtimeServerEventConversationItemDeleted)")
+                Log.d(TAG, "onServerEventConversationItemDeleted($message)")
             }
             listeners.forEach {
-                it.onServerEventConversationItemDeleted(realtimeServerEventConversationItemDeleted)
+                it.onServerEventConversationItemDeleted(message)
             }
         }
 
-        override fun onServerEventConversationItemInputAudioTranscriptionCompleted(realtimeServerEventConversationItemInputAudioTranscriptionCompleted: RealtimeServerEventConversationItemInputAudioTranscriptionCompleted) {
+        override fun onServerEventConversationItemInputAudioTranscriptionCompleted(message: RealtimeServerEventConversationItemInputAudioTranscriptionCompleted) {
             if (debugLogConversation) {
-                Log.d(TAG, "onServerEventConversationItemInputAudioTranscriptionCompleted($realtimeServerEventConversationItemInputAudioTranscriptionCompleted)")
+                Log.d(TAG, "onServerEventConversationItemInputAudioTranscriptionCompleted($message)")
             }
-            val id = realtimeServerEventConversationItemInputAudioTranscriptionCompleted.itemId
-            val transcript =
-                realtimeServerEventConversationItemInputAudioTranscriptionCompleted.transcript.trim() // DO TRIM!
+            val id = message.itemId
+            val transcript = message.transcript.trim() // **DO** TRIM!
             if (transcript.isNotBlank()) {
                 conversationItemAdd(
                     "onServerEventConversationItemInputAudioTranscriptionCompleted",
                     ConversationItem(
                         id = id,
-                        speaker = ConversationSpeaker.Local,
-                        initialText = transcript
+                        type = ConversationItemType.Local,
+                        initialText = transcript,
                     )
                 )
             }
             listeners.forEach {
-                it.onServerEventConversationItemInputAudioTranscriptionCompleted(realtimeServerEventConversationItemInputAudioTranscriptionCompleted)
+                it.onServerEventConversationItemInputAudioTranscriptionCompleted(message)
             }
         }
 
-        override fun onServerEventConversationItemInputAudioTranscriptionFailed(realtimeServerEventConversationItemInputAudioTranscriptionFailed: RealtimeServerEventConversationItemInputAudioTranscriptionFailed) {
+        override fun onServerEventConversationItemInputAudioTranscriptionFailed(message: RealtimeServerEventConversationItemInputAudioTranscriptionFailed) {
             if (debugLogConversation) {
-                Log.d(TAG, "onServerEventConversationItemInputAudioTranscriptionFailed($realtimeServerEventConversationItemInputAudioTranscriptionFailed)")
+                Log.d(TAG, "onServerEventConversationItemInputAudioTranscriptionFailed($message)")
             }
             listeners.forEach {
-                it.onServerEventConversationItemInputAudioTranscriptionFailed(realtimeServerEventConversationItemInputAudioTranscriptionFailed)
+                it.onServerEventConversationItemInputAudioTranscriptionFailed(message)
             }
         }
 
-        override fun onServerEventConversationItemTruncated(realtimeServerEventConversationItemTruncated: RealtimeServerEventConversationItemTruncated) {
+        override fun onServerEventConversationItemTruncated(message: RealtimeServerEventConversationItemTruncated) {
             if (debugLogConversation) {
-                Log.d(TAG, "onServerEventConversationItemTruncated($realtimeServerEventConversationItemTruncated)")
+                Log.d(TAG, "onServerEventConversationItemTruncated($message)")
             }
             listeners.forEach {
-                it.onServerEventConversationItemTruncated(realtimeServerEventConversationItemTruncated)
+                it.onServerEventConversationItemTruncated(message)
             }
         }
 
-        override fun onServerEventError(realtimeServerEventError: RealtimeServerEventError) {
-            Log.d(TAG, "onServerEventError($realtimeServerEventError)")
-            val error = realtimeServerEventError.error
-            val text = error.message
+        override fun onServerEventError(message: RealtimeServerEventError) {
+            Log.d(TAG, "onServerEventError($message)")
+            val error = message.error
+            val errorMessage = error.message
             showToast(
                 context = getApplication(),
-                text = text,
+                text = errorMessage,
                 duration = Toast.LENGTH_LONG,
                 forceInvokeOnMain = true,
             )
             listeners.forEach {
-                it.onServerEventError(realtimeServerEventError)
+                it.onServerEventError(message)
             }
         }
 
-        override fun onServerEventInputAudioBufferCleared(realtimeServerEventInputAudioBufferCleared: RealtimeServerEventInputAudioBufferCleared) {
-            Log.d(TAG, "onServerEventInputAudioBufferCleared($realtimeServerEventInputAudioBufferCleared)")
+        override fun onServerEventInputAudioBufferCleared(message: RealtimeServerEventInputAudioBufferCleared) {
+            Log.d(TAG, "onServerEventInputAudioBufferCleared($message)")
             listeners.forEach {
-                it.onServerEventInputAudioBufferCleared(realtimeServerEventInputAudioBufferCleared)
+                it.onServerEventInputAudioBufferCleared(message)
             }
         }
 
-        override fun onServerEventInputAudioBufferCommitted(realtimeServerEventInputAudioBufferCommitted: RealtimeServerEventInputAudioBufferCommitted) {
-            Log.d(TAG, "onServerEventInputAudioBufferCommitted($realtimeServerEventInputAudioBufferCommitted)")
+        override fun onServerEventInputAudioBufferCommitted(message: RealtimeServerEventInputAudioBufferCommitted) {
+            Log.d(TAG, "onServerEventInputAudioBufferCommitted($message)")
             listeners.forEach {
-                it.onServerEventInputAudioBufferCommitted(realtimeServerEventInputAudioBufferCommitted)
+                it.onServerEventInputAudioBufferCommitted(message)
             }
         }
 
-        override fun onServerEventInputAudioBufferSpeechStarted(realtimeServerEventInputAudioBufferSpeechStarted: RealtimeServerEventInputAudioBufferSpeechStarted) {
-            Log.d(TAG, "onServerEventInputAudioBufferSpeechStarted($realtimeServerEventInputAudioBufferSpeechStarted)")
+        override fun onServerEventInputAudioBufferSpeechStarted(message: RealtimeServerEventInputAudioBufferSpeechStarted) {
+            Log.d(TAG, "onServerEventInputAudioBufferSpeechStarted($message)")
             listeners.forEach {
-                it.onServerEventInputAudioBufferSpeechStarted(realtimeServerEventInputAudioBufferSpeechStarted)
+                it.onServerEventInputAudioBufferSpeechStarted(message)
             }
         }
 
-        override fun onServerEventInputAudioBufferSpeechStopped(realtimeServerEventInputAudioBufferSpeechStopped: RealtimeServerEventInputAudioBufferSpeechStopped) {
-            Log.d(TAG, "onServerEventInputAudioBufferSpeechStopped($realtimeServerEventInputAudioBufferSpeechStopped)")
+        override fun onServerEventInputAudioBufferSpeechStopped(message: RealtimeServerEventInputAudioBufferSpeechStopped) {
+            Log.d(TAG, "onServerEventInputAudioBufferSpeechStopped($message)")
             listeners.forEach {
-                it.onServerEventInputAudioBufferSpeechStopped(realtimeServerEventInputAudioBufferSpeechStopped)
+                it.onServerEventInputAudioBufferSpeechStopped(message)
             }
         }
 
-        override fun onServerEventOutputAudioBufferAudioStarted(realtimeServerEventOutputAudioBufferAudioStarted: RealtimeClient.ServerEventOutputAudioBufferAudioStarted) {
-            Log.d(TAG, "onServerEventOutputAudioBufferAudioStarted($realtimeServerEventOutputAudioBufferAudioStarted)")
+        override fun onServerEventOutputAudioBufferAudioStarted(message: RealtimeClient.ServerEventOutputAudioBufferAudioStarted) {
+            Log.d(TAG, "onServerEventOutputAudioBufferAudioStarted($message)")
             listeners.forEach {
-                it.onServerEventOutputAudioBufferAudioStarted(realtimeServerEventOutputAudioBufferAudioStarted)
+                it.onServerEventOutputAudioBufferAudioStarted(message)
             }
         }
 
-        override fun onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped: ServerEventOutputAudioBufferAudioStopped,
-        ) {
-            Log.d(TAG, "onServerEventOutputAudioBufferAudioStopped($realtimeServerEventOutputAudioBufferAudioStopped)")
+        override fun onServerEventOutputAudioBufferAudioStopped(message: ServerEventOutputAudioBufferAudioStopped) {
+            Log.d(TAG, "onServerEventOutputAudioBufferAudioStopped($message)")
             if (_isCancelingResponse.value) {
                 _isCancelingResponse.value = false
                 showToast(
@@ -1304,50 +1351,52 @@ class MobileViewModel(application: Application) :
                 )
             }
             listeners.forEach {
-                it.onServerEventOutputAudioBufferAudioStopped(realtimeServerEventOutputAudioBufferAudioStopped,
-                )
+                it.onServerEventOutputAudioBufferAudioStopped(message)
             }
             conversationCurrentItemSet("onServerEventOutputAudioBufferAudioStopped", null)
         }
 
-        override fun onServerEventRateLimitsUpdated(realtimeServerEventRateLimitsUpdated: RealtimeServerEventRateLimitsUpdated) {
-            Log.d(TAG, "onServerEventRateLimitsUpdated($realtimeServerEventRateLimitsUpdated)")
+        override fun onServerEventRateLimitsUpdated(message: RealtimeServerEventRateLimitsUpdated) {
+            Log.d(TAG, "onServerEventRateLimitsUpdated($message)")
             listeners.forEach {
-                it.onServerEventRateLimitsUpdated(realtimeServerEventRateLimitsUpdated)
+                it.onServerEventRateLimitsUpdated(message)
             }
         }
 
-        override fun onServerEventResponseAudioDelta(realtimeServerEventResponseAudioDelta: RealtimeServerEventResponseAudioDelta) {
-            Log.d(TAG, "onServerEventResponseAudioDelta($realtimeServerEventResponseAudioDelta)")
+        override fun onServerEventResponseAudioDelta(message: RealtimeServerEventResponseAudioDelta) {
+            Log.d(TAG, "onServerEventResponseAudioDelta($message)")
             listeners.forEach {
-                it.onServerEventResponseAudioDelta(realtimeServerEventResponseAudioDelta)
+                it.onServerEventResponseAudioDelta(message)
             }
         }
 
-        override fun onServerEventResponseAudioDone(realtimeServerEventResponseAudioDone: RealtimeServerEventResponseAudioDone) {
-            Log.d(TAG, "onServerEventResponseAudioDone($realtimeServerEventResponseAudioDone)")
+        override fun onServerEventResponseAudioDone(message: RealtimeServerEventResponseAudioDone) {
+            Log.d(TAG, "onServerEventResponseAudioDone($message)")
             listeners.forEach {
-                it.onServerEventResponseAudioDone(realtimeServerEventResponseAudioDone)
+                it.onServerEventResponseAudioDone(message)
             }
         }
 
-        override fun onServerEventResponseAudioTranscriptDelta(realtimeServerEventResponseAudioTranscriptDelta: RealtimeServerEventResponseAudioTranscriptDelta) {
+        override fun onServerEventResponseAudioTranscriptDelta(message: RealtimeServerEventResponseAudioTranscriptDelta) {
             if (debugLogConversation) {
-                Log.d(TAG, "onServerEventResponseAudioTranscriptDelta($realtimeServerEventResponseAudioTranscriptDelta)")
+                Log.d(TAG, "onServerEventResponseAudioTranscriptDelta($message)")
             }
-            val id = realtimeServerEventResponseAudioTranscriptDelta.itemId
-            val delta = realtimeServerEventResponseAudioTranscriptDelta.delta // DO **NOT** TRIM!
+            val itemId = message.itemId
+            val delta = message.delta // DO **NOT** TRIM!
 
+            //
             // Append this delta to any current in progress conversation,
             // or create a new conversation
-            var (index, conversationItem) = conversationItemFindById(id)
+            //
+
+            var (index, conversationItem) = conversationItemFindById(itemId, debugLog = false)
             if (debugLogConversation) {
-                Log.w(TAG, "onServerEventResponseAudioTranscriptDelta: id=$id, delta=$delta, index=$index, conversationItem=$conversationItem")
+                Log.w(TAG, "onServerEventResponseAudioTranscriptDelta: itemId=${quote(itemId)}, delta=${quote(delta)}, index=$index, conversationItem=$conversationItem")
             }
             if (conversationItem == null) {
                 conversationItem = ConversationItem(
-                    id = id,
-                    speaker = ConversationSpeaker.Remote,
+                    id = itemId,
+                    type = ConversationItemType.Remote,
                     initialText = delta,
                 )
                 conversationItemAdd("onServerEventResponseAudioTranscriptDelta", conversationItem)
@@ -1356,59 +1405,65 @@ class MobileViewModel(application: Application) :
                 conversationItemUpdate(index, conversationItem)
             }
             listeners.forEach {
-                it.onServerEventResponseAudioTranscriptDelta(realtimeServerEventResponseAudioTranscriptDelta)
+                it.onServerEventResponseAudioTranscriptDelta(message)
             }
         }
 
-        override fun onServerEventResponseAudioTranscriptDone(realtimeServerEventResponseAudioTranscriptDone: RealtimeServerEventResponseAudioTranscriptDone) {
+        override fun onServerEventResponseAudioTranscriptDone(message: RealtimeServerEventResponseAudioTranscriptDone) {
             if (debugLogConversation) {
-                Log.d(TAG, "onServerEventResponseAudioTranscriptDone($realtimeServerEventResponseAudioTranscriptDone)")
+                Log.d(TAG, "onServerEventResponseAudioTranscriptDone($message)")
             }
             listeners.forEach {
-                it.onServerEventResponseAudioTranscriptDone(realtimeServerEventResponseAudioTranscriptDone)
+                it.onServerEventResponseAudioTranscriptDone(message)
             }
         }
 
-        override fun onServerEventResponseContentPartAdded(realtimeServerEventResponseContentPartAdded: RealtimeServerEventResponseContentPartAdded) {
+        override fun onServerEventResponseContentPartAdded(message: RealtimeServerEventResponseContentPartAdded) {
             if (debugLogConversation) {
-                Log.d(TAG, "onServerEventResponseContentPartAdded($realtimeServerEventResponseContentPartAdded)")
+                Log.d(TAG, "onServerEventResponseContentPartAdded($message)")
             }
             listeners.forEach {
-                it.onServerEventResponseContentPartAdded(realtimeServerEventResponseContentPartAdded)
+                it.onServerEventResponseContentPartAdded(message)
             }
         }
 
-        override fun onServerEventResponseContentPartDone(realtimeServerEventResponseContentPartDone: RealtimeServerEventResponseContentPartDone) {
+        override fun onServerEventResponseContentPartDone(message: RealtimeServerEventResponseContentPartDone) {
             if (debugLogConversation) {
-                Log.d(TAG, "onServerEventResponseContentPartDone($realtimeServerEventResponseContentPartDone)")
+                Log.d(TAG, "onServerEventResponseContentPartDone($message)")
             }
             listeners.forEach {
-                it.onServerEventResponseContentPartDone(realtimeServerEventResponseContentPartDone)
+                it.onServerEventResponseContentPartDone(message)
             }
         }
 
-        override fun onServerEventResponseCreated(realtimeServerEventResponseCreated: RealtimeServerEventResponseCreated) {
+        override fun onServerEventResponseCreated(message: RealtimeServerEventResponseCreated) {
             if (debugLogConversation) {
-                Log.d(TAG, "onServerEventResponseCreated($realtimeServerEventResponseCreated)")
+                Log.d(TAG, "onServerEventResponseCreated($message)")
             }
             listeners.forEach {
-                it.onServerEventResponseCreated(realtimeServerEventResponseCreated)
+                it.onServerEventResponseCreated(message)
             }
         }
 
-        override fun onServerEventResponseDone(realtimeServerEventResponseDone: RealtimeServerEventResponseDone) {
+        override fun onServerEventResponseDone(message: RealtimeServerEventResponseDone) {
             if (debugLogConversation) {
-                Log.d(TAG, "onServerEventResponseDone($realtimeServerEventResponseDone)")
+                Log.d(TAG, "onServerEventResponseDone($message)")
             }
-            val response = realtimeServerEventResponseDone.response
+            val response = message.response
+
+            var incomplete = false
+
             when (response.status) {
                 RealtimeResponse.Status.incomplete -> {
+                    incomplete = true
                     val statusDetails = response.statusDetails
                     when (statusDetails?.reason) {
                         RealtimeResponseStatusDetails.Reason.max_output_tokens -> {
+                            val text = "Max output tokens reached"
+                            Log.w(TAG, "onServerEventResponseDone: ${text.uppercase()}")
                             showToast(
                                 context = getApplication(),
-                                text = "Max output tokens reached",
+                                text = text,
                                 forceInvokeOnMain = true,
                             )
                         }
@@ -1417,6 +1472,7 @@ class MobileViewModel(application: Application) :
                 }
                 else -> { /* ignore */ }
             }
+
             response.output?.forEach { outputConversationItem ->
                 if (debugLogConversation) {
                     Log.w(TAG, "onServerEventResponseDone: outputConversationItem=$outputConversationItem")
@@ -1425,68 +1481,92 @@ class MobileViewModel(application: Application) :
                 val (index, conversationItem) = conversationItemFindById(id)
                 if (conversationItem != null) {
                     conversationItemDelete(index)
+                    conversationItem.incomplete = incomplete
                     conversationItemAdd("onServerEventResponseDone", conversationItem)
                 }
             }
             listeners.forEach {
-                it.onServerEventResponseDone(realtimeServerEventResponseDone)
+                it.onServerEventResponseDone(message)
             }
         }
 
-        override fun onServerEventResponseFunctionCallArgumentsDelta(realtimeServerEventResponseFunctionCallArgumentsDelta: RealtimeServerEventResponseFunctionCallArgumentsDelta) {
-            Log.d(TAG, "onServerEventResponseFunctionCallArgumentsDelta($realtimeServerEventResponseFunctionCallArgumentsDelta)")
+        override fun onServerEventResponseFunctionCallArgumentsDelta(message: RealtimeServerEventResponseFunctionCallArgumentsDelta) {
+            Log.d(TAG, "onServerEventResponseFunctionCallArgumentsDelta($message)")
+            val itemId = message.itemId
+            val delta = message.delta // DO **NOT** TRIM!
+
+            val (index, conversationItem) = conversationItemFindById(itemId, debugLog = false)
+            //Log.d(TAG, "onServerEventResponseFunctionCallArgumentsDelta: id=${quote(itemId)}, delta=${quote(delta)}, index=$index, conversationItem=$conversationItem")
+            if (conversationItem != null) {
+                conversationItem.functionArguments += delta
+                conversationItemUpdate(index, conversationItem)
+            }
             listeners.forEach {
-                it.onServerEventResponseFunctionCallArgumentsDelta(realtimeServerEventResponseFunctionCallArgumentsDelta)
+                it.onServerEventResponseFunctionCallArgumentsDelta(message)
             }
         }
 
-        override fun onServerEventResponseFunctionCallArgumentsDone(realtimeServerEventResponseFunctionCallArgumentsDone: RealtimeServerEventResponseFunctionCallArgumentsDone) {
-            Log.d(TAG, "onServerEventResponseFunctionCallArgumentsDone($realtimeServerEventResponseFunctionCallArgumentsDone)")
+        override fun onServerEventResponseFunctionCallArgumentsDone(message: RealtimeServerEventResponseFunctionCallArgumentsDone) {
+            Log.d(TAG, "onServerEventResponseFunctionCallArgumentsDone($message)")
+            val itemId = message.itemId
+            val callId = message.callId
+            val (index, conversationItem) = conversationItemFindById(itemId, debugLog = false)
+            Log.i(TAG, "onServerEventResponseFunctionCallArgumentsDone: itemId=$itemId, callId=$callId, index=$index, conversationItem=$conversationItem")
+            if (conversationItem != null) {
+                val functionName = conversationItem.functionName
+                val functionArguments = JSONObject(conversationItem.functionArguments)
+                val functionOutput = runFunction(functionName, functionArguments)
+                conversationItem.functionOutput = functionOutput
+                realtimeClient?.dataSendConversationItemCreateFunctionCallOutput(
+                    callId = conversationItem.functionCallId,
+                    output = conversationItem.functionOutput,
+                )
+            }
             listeners.forEach {
-                it.onServerEventResponseFunctionCallArgumentsDone(realtimeServerEventResponseFunctionCallArgumentsDone)
+                it.onServerEventResponseFunctionCallArgumentsDone(message)
             }
         }
 
-        override fun onServerEventResponseOutputItemAdded(realtimeServerEventResponseOutputItemAdded: RealtimeServerEventResponseOutputItemAdded) {
-            Log.d(TAG, "onServerEventResponseOutputItemAdded($realtimeServerEventResponseOutputItemAdded)")
+        override fun onServerEventResponseOutputItemAdded(message: RealtimeServerEventResponseOutputItemAdded) {
+            Log.d(TAG, "onServerEventResponseOutputItemAdded($message)")
             listeners.forEach {
-                it.onServerEventResponseOutputItemAdded(realtimeServerEventResponseOutputItemAdded)
+                it.onServerEventResponseOutputItemAdded(message)
             }
         }
 
-        override fun onServerEventResponseOutputItemDone(realtimeServerEventResponseOutputItemDone: RealtimeServerEventResponseOutputItemDone) {
-            Log.d(TAG, "onServerEventResponseOutputItemDone($realtimeServerEventResponseOutputItemDone)")
+        override fun onServerEventResponseOutputItemDone(message: RealtimeServerEventResponseOutputItemDone) {
+            Log.d(TAG, "onServerEventResponseOutputItemDone($message)")
             listeners.forEach {
-                it.onServerEventResponseOutputItemDone(realtimeServerEventResponseOutputItemDone)
+                it.onServerEventResponseOutputItemDone(message)
             }
         }
 
-        override fun onServerEventResponseTextDelta(realtimeServerEventResponseTextDelta: RealtimeServerEventResponseTextDelta) {
-            Log.d(TAG, "onServerEventResponseTextDelta($realtimeServerEventResponseTextDelta)")
+        override fun onServerEventResponseTextDelta(message: RealtimeServerEventResponseTextDelta) {
+            Log.d(TAG, "onServerEventResponseTextDelta($message)")
             listeners.forEach {
-                it.onServerEventResponseTextDelta(realtimeServerEventResponseTextDelta)
+                it.onServerEventResponseTextDelta(message)
             }
         }
 
-        override fun onServerEventResponseTextDone(realtimeServerEventResponseTextDone: RealtimeServerEventResponseTextDone) {
-            Log.d(TAG, "onServerEventResponseTextDone($realtimeServerEventResponseTextDone)")
+        override fun onServerEventResponseTextDone(message: RealtimeServerEventResponseTextDone) {
+            Log.d(TAG, "onServerEventResponseTextDone($message)")
             listeners.forEach {
-                it.onServerEventResponseTextDone(realtimeServerEventResponseTextDone)
+                it.onServerEventResponseTextDone(message)
             }
         }
 
-        override fun onServerEventSessionCreated(realtimeServerEventSessionCreated: RealtimeServerEventSessionCreated) {
-            Log.d(TAG, "onServerEventSessionCreated($realtimeServerEventSessionCreated)")
+        override fun onServerEventSessionCreated(message: RealtimeServerEventSessionCreated) {
+            Log.d(TAG, "onServerEventSessionCreated($message)")
             if (debugToastVerbose) {
                 showToast(context = getApplication(), text = "Session Created", forceInvokeOnMain = true)
             }
             listeners.forEach {
-                it.onServerEventSessionCreated(realtimeServerEventSessionCreated)
+                it.onServerEventSessionCreated(message)
             }
         }
 
-        override fun onServerEventSessionUpdated(realtimeServerEventSessionUpdated: RealtimeServerEventSessionUpdated) {
-            Log.d(TAG, "onServerEventSessionUpdated($realtimeServerEventSessionUpdated)")
+        override fun onServerEventSessionUpdated(message: RealtimeServerEventSessionUpdated) {
+            Log.d(TAG, "onServerEventSessionUpdated($message)")
             if (debugToastVerbose) {
                 showToast(
                     context = getApplication(),
@@ -1495,26 +1575,18 @@ class MobileViewModel(application: Application) :
                 )
             }
             listeners.forEach {
-                it.onServerEventSessionUpdated(realtimeServerEventSessionUpdated)
+                it.onServerEventSessionUpdated(message)
             }
         }
 
-        override fun onServerEventSessionExpired(realtimeServerEventError: RealtimeServerEventError) {
-            Log.d(TAG, "onServerEventSessionExpired($realtimeServerEventError)")
-            val message = realtimeServerEventError.error.message
-            showNotificationSessionExpired(message)
+        override fun onServerEventSessionExpired(message: RealtimeServerEventError) {
+            Log.d(TAG, "onServerEventSessionExpired($message)")
+            val errorMessage = message.error.message
+            showNotificationSessionExpired(errorMessage)
             listeners.forEach {
-                it.onServerEventSessionExpired(realtimeServerEventError)
+                it.onServerEventSessionExpired(message)
             }
         }
-    }
-
-    fun addListener(listener: RealtimeClientListener) {
-        listeners.add(listener)
-    }
-
-    fun removeListener(listener: RealtimeClientListener) {
-        listeners.remove(listener)
     }
 
     //
@@ -1547,11 +1619,11 @@ class MobileViewModel(application: Application) :
         }
 
         override fun onBluetoothHeadsetStateChanged(headsetName: String?, state: Int) {
-            Log.d(TAG, "onBluetoothHeadsetStateChanged($headsetName, $state)")
+            Log.d(TAG, "onBluetoothHeadsetStateChanged(headsetName=${quote(headsetName)}, state=${bluetoothHeadsetStateToString(state)})")
         }
 
         override fun onBluetoothScoStateChanged(state: Int) {
-            Log.d(TAG, "onBluetoothScoStateChanged($state)")
+            Log.d(TAG, "onBluetoothScoStateChanged(state=${audioManagerScoStateToString(state)})")
         }
     }
 
@@ -1571,7 +1643,7 @@ class MobileViewModel(application: Application) :
 
     private fun audioSwitchStart() {
         audioSwitchStop()
-        Log.d(TAG, "audioSwitchStart: audioSwitch.start(...)")
+        Log.d(TAG, "audioSwitchStart: audioSwitch.start { ... }")
         audioSwitch.start { audioDevices, selectedAudioDevice ->
             Log.d(TAG, "audioSwitchStart.listener: selectedAudioDevice=$selectedAudioDevice, audioDevices=$audioDevices")
             _audioDevices.value = audioDevices
@@ -1586,5 +1658,72 @@ class MobileViewModel(application: Application) :
 
     //
     //endregion
+    //
+
+    //
+    //region Functions
+    //
+
+    //
+    // https://platform.openai.com/docs/api-reference/realtime-sessions/create#realtime-sessions-create-tools
+    // https://platform.openai.com/docs/guides/function-calling
+    //
+
+    private data class FunctionInfo(
+        val function: (JSONObject) -> String,
+        val tool: RealtimeSessionTools,
+    )
+
+    private val functionsMap = mapOf(
+        "taskCreate" to FunctionInfo(
+            function = ::functionTaskCreate,
+            tool = RealtimeSessionTools(
+                type = RealtimeSessionTools.Type.function,
+                name = "taskCreate",
+                description = "Create a task",
+                parameters = mapOf(
+                    "type" to "object",
+                    "properties" to mapOf(
+                        "name" to mapOf(
+                            "type" to "string",
+                            "description" to "The task name"
+                        ),
+                        "time" to mapOf(
+                            "type" to "string",
+                            "description" to "The task time"
+                        ),
+                    ),
+                    "required" to listOf("name"),
+                )
+            )
+        ),
+    )
+
+    private val functions = functionsMap.values.map { it.tool }
+
+    private fun runFunction(name: String, arguments: JSONObject): String {
+        val functionInfo = functionsMap[name]
+        if (functionInfo == null) {
+            Log.e(TAG, "onServerEventResponseFunctionCallArgumentsDone: Unknown function name=${quote(name)}")
+            return ""
+        }
+        val result = functionInfo.function(arguments)
+        return result
+    }
+
+    private fun functionTaskCreate(arguments: JSONObject): String {
+        Log.d(TAG, "+functionTaskCreate(arguments=$arguments)")
+        //...
+        val context: Context = getApplication()
+        showToast(context, "TODO: Create task with arguments=$arguments", forceInvokeOnMain = true)
+        //...
+        val output = "success"
+        //...
+        Log.d(TAG, "-functionTaskCreate(arguments=$arguments); output=$output")
+        return output
+    }
+
+    //
+    //
     //
 }

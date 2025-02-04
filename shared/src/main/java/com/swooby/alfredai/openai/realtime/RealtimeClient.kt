@@ -703,20 +703,39 @@ class RealtimeClient(private val applicationContext: Context,
     /**
      * https://platform.openai.com/docs/guides/realtime-model-capabilities#text-inputs-and-outputs
      */
-    fun dataSendConversationItemCreate(text: String): Boolean {
+    fun dataSendConversationItemCreateMessageInputText(
+        text: String,
+        role: RealtimeConversationItem.Role = RealtimeConversationItem.Role.user,
+    ): Boolean {
         return dataSend(
             RealtimeClientEventConversationItemCreate(
                 eventId = RealtimeUtils.generateId(),
                 item = RealtimeConversationItem(
                     type = RealtimeConversationItem.Type.message,
-                    role = RealtimeConversationItem.Role.user,
+                    role = role,
                     content = listOf(
                         RealtimeConversationItemContent(
                             type = RealtimeConversationItemContent.Type.input_text,
-                            text = text
+                            text = text,
                         )
-                    )
-                )
+                    ),
+                ),
+            )
+        )
+    }
+
+    fun dataSendConversationItemCreateFunctionCallOutput(
+        callId: String,
+        output: String,
+    ): Boolean {
+        return dataSend(
+            RealtimeClientEventConversationItemCreate(
+                eventId = RealtimeUtils.generateId(),
+                item = RealtimeConversationItem(
+                    type = RealtimeConversationItem.Type.function_call_output,
+                    callId = callId,
+                    output = output,
+                ),
             )
         )
     }

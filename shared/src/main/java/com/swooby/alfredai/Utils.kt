@@ -1,6 +1,8 @@
 package com.swooby.alfredai
 
+import android.bluetooth.BluetoothHeadset
 import android.content.Context
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.util.JsonReader
 import android.util.Log
@@ -22,7 +24,7 @@ object Utils {
         }
     }
 
-    fun quote(value: Any?, typeOnly: Boolean = false): String {
+    fun quote(value: Any?, typeOnly: Boolean = false, stringQuoteChar: Char = '"'): String {
         if (value == null) {
             return "null"
         }
@@ -32,19 +34,19 @@ object Utils {
         }
 
         if (value is String) {
-            return "\"$value\""
+            return "$stringQuoteChar$value$stringQuoteChar"
         }
 
         if (value is CharSequence) {
-            return "\"$value\""
+            return "'$value'"
         }
 
         return value.toString()
     }
 
-    fun redact(input: String?, peekCount: Int = 3): String {
+    fun redact(input: String?, peekCount: Int = 3, dangerousNullOK: Boolean = false): String? {
         if (input.isNullOrBlank() || input.length <= 6 || input.length < (peekCount * 2 + 8)) {
-            return "{REDACTED}"
+            return if (dangerousNullOK && input.isNullOrBlank()) null else return "{REDACTED}"
         }
         val firstThree = input.take(peekCount)
         val lastThree = input.takeLast(peekCount)
@@ -99,6 +101,18 @@ object Utils {
         }
     }
 
+    fun intFieldToName(clazz: KClass<*>, startsWith: String, value: Int, suffixValue: Boolean = true): String {
+        return (getMapOfIntFieldsToNames(clazz, startsWith)[value] ?: "INVALID") + if (suffixValue) "($value)" else ""
+    }
+
+    fun bluetoothHeadsetStateToString(state: Int): String {
+        return intFieldToName(BluetoothHeadset::class, "STATE_", state)
+    }
+
+    fun audioManagerScoStateToString(state: Int): String {
+        return intFieldToName(AudioManager::class, "SCO_AUDIO_STATE_", state)
+    }
+
     fun playAudioResourceOnce(
         context: Context,
         audioResourceId: Int,
@@ -140,13 +154,5 @@ object Utils {
             else
                 -> permission
         }
-    }
-
-    fun phoneDeviceTypeToString(phoneType: Int): String {
-        val map = getMapOfIntFieldsToNames(
-            PhoneTypeHelper::class,
-            "DEVICE_TYPE_"
-        )
-        return (map[phoneType] ?: "INVALID") + "($phoneType)"
     }
 }

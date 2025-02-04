@@ -91,6 +91,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import com.swooby.alfredai.AppUtils.showToast
 import com.swooby.alfredai.Utils.getFriendlyPermissionName
+import com.swooby.alfredai.Utils.quote
 import com.swooby.alfredai.ui.theme.AlfredAITheme
 import kotlinx.coroutines.flow.collectLatest
 
@@ -434,15 +435,16 @@ fun MobileApp(mobileViewModel: MobileViewModelInterface) {
                                         val contentAlignment: Alignment
                                         val textAlign: TextAlign
 
-                                        when (item.speaker) {
-                                            MobileViewModel.ConversationSpeaker.Local -> {
+                                        when (item.type) {
+                                            MobileViewModel.ConversationItemType.Local -> {
                                                 avatarResId = R.drawable.baseline_person_24
                                                 horizontalAlignment = Arrangement.Start
                                                 contentAlignment = Alignment.CenterStart
                                                 textAlign = TextAlign.Start
                                             }
 
-                                            MobileViewModel.ConversationSpeaker.Remote -> {
+                                            MobileViewModel.ConversationItemType.Function,
+                                            MobileViewModel.ConversationItemType.Remote -> {
                                                 avatarResId = R.drawable.baseline_memory_24
                                                 horizontalAlignment = Arrangement.End
                                                 contentAlignment = Alignment.CenterEnd
@@ -489,7 +491,7 @@ fun MobileApp(mobileViewModel: MobileViewModelInterface) {
                                             verticalAlignment = Alignment.Top,
                                             horizontalArrangement = horizontalAlignment
                                         ) {
-                                            if (item.speaker == MobileViewModel.ConversationSpeaker.Local) {
+                                            if (item.type == MobileViewModel.ConversationItemType.Local) {
                                                 Box(
                                                     modifier = Modifier
                                                         .offset { IntOffset(0, avatarOffsetY) },
@@ -510,17 +512,27 @@ fun MobileApp(mobileViewModel: MobileViewModelInterface) {
                                                     .weight(1f),
                                                 contentAlignment = contentAlignment
                                             ) {
+                                                val text = when (item.type) {
+                                                    MobileViewModel.ConversationItemType.Function -> {
+                                                        val text = item.text.trimEnd('`')
+                                                        "$text(${quote(item.functionArguments)})`"
+                                                    }
+                                                    else -> {
+                                                        item.text
+                                                    }
+                                                }
                                                 SelectionContainer {
                                                     Text(
                                                         modifier = Modifier
-                                                            .border(1.dp, Color.Gray, shape = RoundedCornerShape(8.dp))
+                                                            .border(1.dp, if (item.incomplete) Color.Yellow else Color.Gray, shape = RoundedCornerShape(8.dp))
                                                             .padding(8.dp),
-                                                        text = item.text,
+                                                        text = text,
                                                         textAlign = textAlign,
                                                     )
                                                 }
                                             }
-                                            if (item.speaker == MobileViewModel.ConversationSpeaker.Remote) {
+                                            if (item.type == MobileViewModel.ConversationItemType.Remote ||
+                                                item.type == MobileViewModel.ConversationItemType.Function) {
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Box(
                                                     modifier = Modifier
