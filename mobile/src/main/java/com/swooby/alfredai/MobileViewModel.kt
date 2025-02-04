@@ -75,6 +75,7 @@ import com.swooby.alfredai.Utils.redact
 import com.swooby.alfredai.openai.realtime.RealtimeClient
 import com.swooby.alfredai.openai.realtime.RealtimeClient.RealtimeClientListener
 import com.swooby.alfredai.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
+import com.swooby.alfredai.openai.realtime.TransportType
 import com.twilio.audioswitch.AudioDevice
 import com.twilio.audioswitch.AudioDevice.BluetoothHeadset
 import com.twilio.audioswitch.AudioDevice.Earpiece
@@ -485,6 +486,7 @@ class MobileViewModel(application: Application) :
             ApiClient.defaultClient
 
         realtimeClient = RealtimeClient(
+            transportType = TransportType.WEBRTC,
             applicationContext = getApplication(),
             dangerousApiKey = prefs.apiKey,
             sessionConfig = sessionConfig,
@@ -1117,6 +1119,13 @@ class MobileViewModel(application: Application) :
                 it.onError(error)
             }
             disconnect(isClient = true)
+        }
+
+        override fun onDataChannelOpened() {
+            Log.d(TAG, "onDataChannelOpened()")
+            listeners.forEach {
+                it.onDataChannelOpened()
+            }
         }
 
         override fun onConnected() {
