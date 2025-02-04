@@ -133,7 +133,6 @@ class RealtimeClient(
             override fun onTextMessageReceived(message: String): Boolean {
                 return this@RealtimeClient.onTextMessageReceived(message)
             }
-
         })
     }
 

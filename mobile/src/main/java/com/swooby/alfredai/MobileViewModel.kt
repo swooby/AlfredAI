@@ -88,6 +88,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.math.BigDecimal
@@ -547,21 +548,38 @@ class MobileViewModel(application: Application) :
             jobConnect = viewModelScope.launch(Dispatchers.IO) {
                 var ephemeralApiKey: String? = null
                 try {
+                    Log.d(TAG, "+jobConnect()")
                     if (debugConnectDelayMillis > 0) {
                         delay(debugConnectDelayMillis)
                     }
-                    ephemeralApiKey = realtimeClient?.connect()
-                    Log.d(TAG, "ephemeralApiKey=${quote(redact(ephemeralApiKey, dangerousNullOK = true))}")
-                    if (ephemeralApiKey == null) {
-                        Log.e(TAG, "Failed to obtain ephemeral API key")
+                    if (!isActive) {
+                        Log.d(TAG, "jobConnect: canceled")
+                        return@launch
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Connection failed", e)
-                }
-                if (ephemeralApiKey != null) {
+                    ephemeralApiKey = try {
+                        Log.d(TAG, "jobConnect: +realtimeClient?.connect()")
+                        val result = realtimeClient?.connect()
+                        Log.d(TAG, "jobConnect: -realtimeClient?.connect()")
+                        result
+                    } catch (e: Exception) {
+                        Log.e(TAG, "jobConnect: -realtimeClient?.connect(); EXCEPTION", e)
+                        null
+                    }
+                    Log.d(TAG, "jobConnect: ephemeralApiKey=${quote(redact(ephemeralApiKey, dangerousNullOK = true))}")
+                    if (!isActive) {
+                        Log.d(TAG, "jobConnect: canceled")
+                        return@launch
+                    }
+                    if (ephemeralApiKey == null) {
+                        Log.e(TAG, "jobConnect: Failed to obtain ephemeralApiKey")
+                        return@launch
+                    }
                     realtimeClient?.setLocalAudioTrackMicrophoneEnabled(false)
-                } else {
-                    disconnect()
+                } finally {
+                    if (ephemeralApiKey == null) {
+                        disconnect()
+                    }
+                    Log.d(TAG, "-jobConnect()")
                 }
             }
         } finally {
@@ -1021,9 +1039,11 @@ class MobileViewModel(application: Application) :
 
     private fun updateNotification(contentTitle: String, contentText: String) {
         if (shouldShowNotification) {
+            Log.d(TAG, "updateNotification: Show notification title=${quote(contentTitle)}, text=${quote(contentText)})")
             val notification = createNotification(contentTitle, contentText)
             notificationManager.notify(NOTIFICATION_ID_SESSION, notification)
         } else {
+            Log.d(TAG, "updateNotification: Show toast text=${quote(contentText)}")
             showToast(context = getApplication(), text = contentText, forceInvokeOnMain = true)
         }
     }
@@ -1034,11 +1054,11 @@ class MobileViewModel(application: Application) :
 
     private fun showNotificationMysteriousUnknownHostException() {
         val message = "Mysterious \"Unable to resolve host `api.openai.com`\" error; Try again."
-        updateNotification("AlfredAI: Client Error", quote(message))
+        updateNotification("AlfredAI: Client Error", message)
     }
 
     private fun showNotificationSessionClientError(message: String) {
-        updateNotification("AlfredAI: Client Error", quote(message))
+        updateNotification("AlfredAI: Client Error", message)
     }
 
     //
@@ -1101,14 +1121,13 @@ class MobileViewModel(application: Application) :
                             message = response.message
                         }
                         if (expectedJsonBody == null && message == null) {
-                            expectedJsonBody = "{ \"error\": { \"code\": \"-1\" }"
+                            expectedJsonBody = "{ 'error' : { } }"
                         }
-                        if (expectedJsonBody != null) {
-                            val jsonObject = JSONObject(expectedJsonBody.toString())
-                            val jsonError = jsonObject.getJSONObject("error")
-                            val errorCode = jsonError.getString("code")
-                            message = errorCode
-                        }
+                        val jsonObject = JSONObject(expectedJsonBody.toString())
+                        val jsonError = jsonObject.getJSONObject("error")
+                        val errorCode = jsonError.optString("code", "unknown_code")
+                        val errorMessage = jsonError.optString("message", "Unknown error")
+                        message = "$errorCode: $errorMessage"
                     }
                     showNotificationSessionClientError(message!!)
                 }
