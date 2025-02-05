@@ -218,12 +218,21 @@ export class RealtimeClient extends RealtimeEventHandler {
       prefix_padding_ms: 300, // How much audio to include in the audio stream before the speech starts.
       silence_duration_ms: 200, // How long to wait to mark the speech as stopped.
     };
-    this.realtime = new RealtimeAPI({
-      url,
-      apiKey,
-      dangerouslyAllowAPIKeyInBrowser,
-      debug,
-    });
+    if (url.startsWith('wss://')) {
+      this.realtime = new RealtimeAPI({
+        url,
+        apiKey,
+        dangerouslyAllowAPIKeyInBrowser,
+        debug,
+      });
+    } else {
+      this.realtime = new RealtimeApiWebRTC({
+        url,
+        apiKey,
+        dangerouslyAllowAPIKeyInBrowser,
+        debug,
+      });
+    }
     this.conversation = new RealtimeConversation();
     this._resetConfig();
     this._addAPIEventHandlers();

@@ -1,0 +1,308 @@
+<html>
+
+<head>
+    <title>OpenAI Realtime API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 24px;
+            padding: 20px;
+            background-color: #101010;
+            color: whitesmoke;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            font-size: 24px;
+            width: 100%;
+            height: 50px;
+        }
+
+        input[type="radio"] {
+            margin-right: 10px;
+        }
+
+        button {
+            font-size: 24px;
+            /*
+            background-color: #4CAF50;
+            color: white;
+            */
+            padding: 14px 20px;
+            margin: 8px 0;
+            border: none;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        button:hover {
+            opacity: 0.8;
+        }
+
+        /*
+        div {
+            margin-top: 10px;
+            margin-bottom: 10px;
+        }
+        */
+    </style>
+</head>
+
+<body>
+    <h2>OpenAI Realtime API</h2>
+    <div>
+        API Key:
+        <input id="textDangerousApiKey" type="text" value="!KEEP YOUR API KEY SAFE!"
+            oninput="onTextDangerousApiKeyChange()" />
+    </div>
+    <div>
+        <input id="radioWebrtc" type="radio" name="connectionType" value="webrtc" checked>
+        <label for="radioWebrtc">WebRTC</label>
+        <input id="radioWebsocket" type="radio" name="connectionType" value="websocket">
+        <label for="radioWebsocket">WebSocket</label>
+    </div>
+    <div>
+        <button id="buttonConnectDisconnect" onclick="connectDisconnect()">Connect</button>
+    </div>
+    <div>
+        <audio id="audioControl" autoplay></audio>
+    </div>
+    <div>
+        <button id="buttonPushToTalk" onmousedown="pushToTalk(true)" onmouseup="pushToTalk(false)">Push To Talk</button>
+    </div>
+    <div>
+        <label for="inputText">Send Text:</label>
+        <input id="inputText" type="text" />
+        <button id="buttonSendText" onclick="sendText()">Send</button>
+    </div>
+    <div>
+        <button id="buttonInterrupt" onclick="sendInterrupt()">Interrupt</button>
+    </div>
+
+    <script type="module">
+        import { RealtimeApiWebRTC } from './api_webrtc.js';
+        window.RealtimeApiWebRTC = RealtimeApiWebRTC;
+    </script>
+
+    <script>
+
+        //
+        // Business logic
+        //
+
+        const debug = true;
+        const debugRealtimeApi = false;
+
+        const textDangerousApiKey = document.getElementById('textDangerousApiKey');
+        const textDangerousApiKeyDefault = textDangerousApiKey.value;
+
+        const radioWebrtc = document.getElementById('radioWebrtc');
+        const radioWebsocket = document.getElementById('radioWebsocket');
+        function getConnectionType() {
+            return document.querySelector('input[name="connectionType"]:checked').value;
+        }
+        const buttonConnectDisconnect = document.getElementById('buttonConnectDisconnect');
+        const audioControl = document.getElementById('audioControl');
+        const buttonPushToTalk = document.getElementById('buttonPushToTalk');
+        const inputText = document.getElementById('inputText');
+        const buttonSendText = document.getElementById('buttonSendText');
+        const buttonInterrupt = document.getElementById('buttonInterrupt');
+
+        let microphone = null;
+
+        let realtime = null;
+
+        let currentConversation = null;
+
+        function log(...args) {
+            if (debug) {
+                const date = new Date().toISOString();
+                const logs = [`[App/${date}]`].concat(args).map((arg) => {
+                    if (typeof arg === 'object' && arg !== null) {
+                        return JSON.stringify(arg, null, 2);
+                    } else {
+                        return arg;
+                    }
+                });
+                console.log(...logs);
+            }
+            return true;
+        }
+
+        function onTextDangerousApiKeyChange() {
+            if (textDangerousApiKey.value === '') {
+                textDangerousApiKey.value = textDangerousApiKeyDefault;
+                textDangerousApiKey.type = 'text';
+            }
+            if (textDangerousApiKey.value !== textDangerousApiKeyDefault) {
+                textDangerousApiKey.type = 'password';
+            }
+        }
+
+        function connectDisconnect() {
+            log('connectDisconnect()');
+            if (realtime) {
+                disconnect();
+            } else {
+                connect();
+            }
+        }
+
+        function updateControls() {
+            if (realtime) {
+                textDangerousApiKey.disabled = true;
+                radioWebrtc.disabled = true;
+                radioWebsocket.disabled = true;
+
+                buttonPushToTalk.disabled = false;
+                inputText.disabled = false;
+                buttonSendText.disabled = false;
+                buttonInterrupt.disabled = false;
+
+                buttonConnectDisconnect.innerText = 'Disconnect';
+            } else {
+                textDangerousApiKey.disabled = false;
+                radioWebrtc.disabled = false;
+                radioWebsocket.disabled = false;
+
+                buttonPushToTalk.disabled = true;
+                inputText.disabled = true;
+                buttonSendText.disabled = true;
+                buttonInterrupt.disabled = true;
+
+                buttonConnectDisconnect.innerText = 'Connect';
+            }
+        }
+        updateControls();
+
+        function disconnect() {
+            realtime?.disconnect();
+            realtime = null;
+            updateControls();
+        }
+
+        async function connect() {
+            disconnect();
+            log('You may reasonably ignore the proceeding `Warning: Connecting using API key in the browser, this is not recommended`');
+            const dangerousApiKey = textDangerousApiKey.value;
+            const connectionType = getConnectionType();
+            switch (connectionType) {
+                case 'webrtc':
+                    realtime = new RealtimeApiWebRTC({
+                        apiKey: dangerousApiKey,
+                        dangerouslyAllowAPIKeyInBrowser: true,
+                        debug: debugRealtimeApi,
+                    });
+                    break;
+                default:
+                    throw new Error(`Unknown connection type: "${connectionType}"`);
+            }
+            updateControls();
+
+            const getMicrophoneCallback = async () => {
+                const ms = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = ms.getTracks()[0];
+                microphone.enabled = false;
+                return microphone;
+            };
+            const setAudioOutputCallback = (audioSource) => {
+                audioControl.srcObject = audioSource;
+            };
+
+            const sessionConfig = {
+                model: 'gpt-4o-realtime-preview-2024-12-17',
+                voice: 'verse',
+            };
+
+            await realtime.connect(sessionConfig, getMicrophoneCallback, setAudioOutputCallback);
+
+            realtime.on('server.response.content_part.added', (event) => {
+                //log('server.response.content_part.added', event);
+                const responseId = event.response_id;
+                if (responseId !== currentConversation?.responseId) {
+                    currentConversation = {
+                        itemId: event.item_id,
+                        responseId: responseId,
+                        startTime: Date.now(),
+                    };
+                    log('server.response.content_part.added: Set currentConversation=', currentConversation);
+                }
+            });
+            realtime.on('server.response.content_part.done', (event) => {
+                //log('response.content_part.done', event);
+                const responseId = event.response_id;
+                if (responseId === currentConversation?.responseId) {
+                    currentConversation = null;
+                    log('server.response.content_part.done: Set currentConversation=', currentConversation);
+                }
+            });
+            realtime.on('server.output_audio_buffer.stopped', (event) => {
+                log('server.output_audio_buffer.stopped', event);
+                const responseId = event.response_id;
+                if (responseId === currentConversation?.responseId) {
+                    currentConversation = null;
+                    log('server.output_audio_buffer.audio_stopped: Set currentConversation=', currentConversation);
+                }
+            });
+        }
+
+        function sendResponseCreate() {
+            log('sendResponseCreate()');
+            realtime?.send('response.create');
+        }
+
+        function sendResponseCancel(responseId) {
+            log(`sendResponseCancel(${responseId})`);
+            realtime?.send('response.cancel', {
+                response_id: responseId,
+            });
+        }
+
+        function pushToTalk(enable) {
+            log(`pushToTalk(enable=${enable})`);
+            if (enable) {
+                sendInterrupt();
+                microphone.enabled = true;
+                realtime?.send('input_audio_buffer.clear');
+            } else {
+                microphone.enabled = false;
+                realtime?.send('input_audio_buffer.commit');
+                sendResponseCreate();
+            }
+        }
+
+        function sendText(text) {
+            text = text || inputText.value;
+            log(`sendText("${text}")`);
+            realtime?.send('conversation.item.create', {
+                item: {
+                    type: 'message',
+                    role: 'user',
+                    content: [
+                        {
+                            type: 'input_text',
+                            text: text,
+                        }
+                    ]
+                },
+            });
+            sendResponseCreate();
+        }
+
+        function sendInterrupt() {
+            log('sendInterrupt()');
+            if (currentConversation === null) {
+                console.warn('No conversation item to interrupt');
+                return;
+            }
+            const elapsedMillis = Date.now() - currentConversation.startTime;
+            realtime?.send('conversation.item.truncate', {
+                item_id: currentConversation.itemId,
+                content_index: 0,
+                audio_end_ms: elapsedMillis,
+            });
+        }
+    </script>
+</body>
+
+</html>
