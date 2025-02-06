@@ -1,6 +1,7 @@
-import { RealtimeEventHandler } from './event_handler.js';
 import { RealtimeAPI } from './api.js';
 import { RealtimeConversation } from './conversation.js';
+import { RealtimeEventHandler } from './event_handler.js';
+import { RealtimeTransportType } from './transport.js';
 import { RealtimeUtils } from './utils.js';
 
 /**
@@ -191,8 +192,9 @@ export class RealtimeClient extends RealtimeEventHandler {
    * Create a new RealtimeClient instance
    * @param {{url?: string, apiKey?: string, dangerouslyAllowAPIKeyInBrowser?: boolean, debug?: boolean}} [settings]
    */
-  constructor({ url, apiKey, dangerouslyAllowAPIKeyInBrowser, debug } = {}) {
+  constructor({ transportType, url, apiKey, dangerouslyAllowAPIKeyInBrowser, debug } = {}) {
     super();
+    transportType = transportType?.toUpperCase() || RealtimeTransportType.WEBRTC;
     this.defaultSessionConfig = {
       modalities: ['text', 'audio'],
       instructions: '',
@@ -218,21 +220,13 @@ export class RealtimeClient extends RealtimeEventHandler {
       prefix_padding_ms: 300, // How much audio to include in the audio stream before the speech starts.
       silence_duration_ms: 200, // How long to wait to mark the speech as stopped.
     };
-    if (url.startsWith('wss://')) {
-      this.realtime = new RealtimeAPI({
-        url,
-        apiKey,
-        dangerouslyAllowAPIKeyInBrowser,
-        debug,
-      });
-    } else {
-      this.realtime = new RealtimeApiWebRTC({
-        url,
-        apiKey,
-        dangerouslyAllowAPIKeyInBrowser,
-        debug,
-      });
-    }
+    this.realtime = new RealtimeAPI({
+      transportType,
+      url,
+      apiKey,
+      dangerouslyAllowAPIKeyInBrowser,
+      debug,
+    });
     this.conversation = new RealtimeConversation();
     this._resetConfig();
     this._addAPIEventHandlers();

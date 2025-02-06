@@ -1,12 +1,14 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
 
 <head>
     <title>OpenAI Realtime API</title>
     <style>
         body {
+            margin: 0;
+            padding: 10px;
             font-family: Arial, sans-serif;
             font-size: 24px;
-            padding: 20px;
             background-color: #101010;
             color: whitesmoke;
         }
@@ -48,260 +50,57 @@
     </style>
 </head>
 
-<body>
+<!-- `data-server-no-reload` prevents "Visual Studio Code Live Preview Extension" from auto-reloading the page. -->
+<body data-server-no-reload>
     <h2>OpenAI Realtime API</h2>
-    <div>
-        API Key:
-        <input id="textDangerousApiKey" type="text" value="!KEEP YOUR API KEY SAFE!"
+    <div style="display: flex; align-items: center;">
+        <label for="textDangerousApiKey" style="white-space: nowrap; margin-right: 10px;">OpenAI API Key:</label>
+        <input id="textDangerousApiKey" type="text" value="!KEEP YOUR API KEY SAFE!" style="flex: 1"
             oninput="onTextDangerousApiKeyChange()" />
     </div>
-    <div>
+    <div style="display: flex; align-items: center;">
         <input id="radioWebrtc" type="radio" name="connectionType" value="webrtc" checked>
         <label for="radioWebrtc">WebRTC</label>
         <input id="radioWebsocket" type="radio" name="connectionType" value="websocket">
         <label for="radioWebsocket">WebSocket</label>
-    </div>
-    <div>
-        <button id="buttonConnectDisconnect" onclick="connectDisconnect()">Connect</button>
+        <button id="buttonConnectDisconnect" style="white-space: nowrap; margin-left: 10px;"
+            onclick="connectDisconnect()">Connect</button>
     </div>
     <div>
         <audio id="audioControl" autoplay></audio>
     </div>
+    <!--
     <div>
-        <button id="buttonPushToTalk" onmousedown="pushToTalk(true)" onmouseup="pushToTalk(false)">Push To Talk</button>
+        <label for="textareaConversation">Conversation:</label>
+        <textarea id="textareaConversation" rows="20" cols="100"></textarea>
     </div>
-    <div>
-        <label for="inputText">Send Text:</label>
-        <input id="inputText" type="text" />
-        <button id="buttonSendText" onclick="sendText()">Send</button>
+    -->
+    <div style="display: flex; align-items: center;">
+        <label for="inputText" style="white-space: nowrap; margin-right: 10px;">Text Input:</label>
+        <input id="inputText" type="text" style="flex: 1" />
+        <button id="buttonSendText" onclick="sendText()" style="margin-left: 10px; width: auto;">Send</button>
     </div>
     <div>
         <button id="buttonInterrupt" onclick="sendInterrupt()">Interrupt</button>
     </div>
+    <div>
+        <button id="buttonPushToTalk" onmousedown="pushToTalk(true)" onmouseup="pushToTalk(false)">Push To Talk</button>
+    </div>
 
+    <!-- 1% tweaked version of https://github.com/openai/openai-realtime-api-beta -->
     <script type="module">
-        import { RealtimeApiWebRTC } from './api_webrtc.js';
-        window.RealtimeApiWebRTC = RealtimeApiWebRTC;
+        import { RealtimeAPI } from './openai-realtime-api-beta/api.js';
+        window.RealtimeAPI = RealtimeAPI;
+        import { RealtimeTransportType } from './openai-realtime-api-beta/transport.js';
+        window.RealtimeTransportType = RealtimeTransportType;
+        import { RealtimeUtils } from './openai-realtime-api-beta/utils.js';
+        window.RealtimeUtils = RealtimeUtils;
     </script>
-
+    <!-- https://github.com/keithwhor/wavtools/ -->
+    <script src="./wavtools/wavtools.js"></script>
+    <script src="./index.js"></script>
     <script>
-
-        //
-        // Business logic
-        //
-
-        const debug = true;
-        const debugRealtimeApi = false;
-
-        const textDangerousApiKey = document.getElementById('textDangerousApiKey');
-        const textDangerousApiKeyDefault = textDangerousApiKey.value;
-
-        const radioWebrtc = document.getElementById('radioWebrtc');
-        const radioWebsocket = document.getElementById('radioWebsocket');
-        function getConnectionType() {
-            return document.querySelector('input[name="connectionType"]:checked').value;
-        }
-        const buttonConnectDisconnect = document.getElementById('buttonConnectDisconnect');
-        const audioControl = document.getElementById('audioControl');
-        const buttonPushToTalk = document.getElementById('buttonPushToTalk');
-        const inputText = document.getElementById('inputText');
-        const buttonSendText = document.getElementById('buttonSendText');
-        const buttonInterrupt = document.getElementById('buttonInterrupt');
-
-        let microphone = null;
-
-        let realtime = null;
-
-        let currentConversation = null;
-
-        function log(...args) {
-            if (debug) {
-                const date = new Date().toISOString();
-                const logs = [`[App/${date}]`].concat(args).map((arg) => {
-                    if (typeof arg === 'object' && arg !== null) {
-                        return JSON.stringify(arg, null, 2);
-                    } else {
-                        return arg;
-                    }
-                });
-                console.log(...logs);
-            }
-            return true;
-        }
-
-        function onTextDangerousApiKeyChange() {
-            if (textDangerousApiKey.value === '') {
-                textDangerousApiKey.value = textDangerousApiKeyDefault;
-                textDangerousApiKey.type = 'text';
-            }
-            if (textDangerousApiKey.value !== textDangerousApiKeyDefault) {
-                textDangerousApiKey.type = 'password';
-            }
-        }
-
-        function connectDisconnect() {
-            log('connectDisconnect()');
-            if (realtime) {
-                disconnect();
-            } else {
-                connect();
-            }
-        }
-
-        function updateControls() {
-            if (realtime) {
-                textDangerousApiKey.disabled = true;
-                radioWebrtc.disabled = true;
-                radioWebsocket.disabled = true;
-
-                buttonPushToTalk.disabled = false;
-                inputText.disabled = false;
-                buttonSendText.disabled = false;
-                buttonInterrupt.disabled = false;
-
-                buttonConnectDisconnect.innerText = 'Disconnect';
-            } else {
-                textDangerousApiKey.disabled = false;
-                radioWebrtc.disabled = false;
-                radioWebsocket.disabled = false;
-
-                buttonPushToTalk.disabled = true;
-                inputText.disabled = true;
-                buttonSendText.disabled = true;
-                buttonInterrupt.disabled = true;
-
-                buttonConnectDisconnect.innerText = 'Connect';
-            }
-        }
-        updateControls();
-
-        function disconnect() {
-            realtime?.disconnect();
-            realtime = null;
-            updateControls();
-        }
-
-        async function connect() {
-            disconnect();
-            log('You may reasonably ignore the proceeding `Warning: Connecting using API key in the browser, this is not recommended`');
-            const dangerousApiKey = textDangerousApiKey.value;
-            const connectionType = getConnectionType();
-            switch (connectionType) {
-                case 'webrtc':
-                    realtime = new RealtimeApiWebRTC({
-                        apiKey: dangerousApiKey,
-                        dangerouslyAllowAPIKeyInBrowser: true,
-                        debug: debugRealtimeApi,
-                    });
-                    break;
-                default:
-                    throw new Error(`Unknown connection type: "${connectionType}"`);
-            }
-            updateControls();
-
-            const getMicrophoneCallback = async () => {
-                const ms = await navigator.mediaDevices.getUserMedia({ audio: true });
-                microphone = ms.getTracks()[0];
-                microphone.enabled = false;
-                return microphone;
-            };
-            const setAudioOutputCallback = (audioSource) => {
-                audioControl.srcObject = audioSource;
-            };
-
-            const sessionConfig = {
-                model: 'gpt-4o-realtime-preview-2024-12-17',
-                voice: 'verse',
-            };
-
-            await realtime.connect(sessionConfig, getMicrophoneCallback, setAudioOutputCallback);
-
-            realtime.on('server.response.content_part.added', (event) => {
-                //log('server.response.content_part.added', event);
-                const responseId = event.response_id;
-                if (responseId !== currentConversation?.responseId) {
-                    currentConversation = {
-                        itemId: event.item_id,
-                        responseId: responseId,
-                        startTime: Date.now(),
-                    };
-                    log('server.response.content_part.added: Set currentConversation=', currentConversation);
-                }
-            });
-            realtime.on('server.response.content_part.done', (event) => {
-                //log('response.content_part.done', event);
-                const responseId = event.response_id;
-                if (responseId === currentConversation?.responseId) {
-                    currentConversation = null;
-                    log('server.response.content_part.done: Set currentConversation=', currentConversation);
-                }
-            });
-            realtime.on('server.output_audio_buffer.stopped', (event) => {
-                log('server.output_audio_buffer.stopped', event);
-                const responseId = event.response_id;
-                if (responseId === currentConversation?.responseId) {
-                    currentConversation = null;
-                    log('server.output_audio_buffer.audio_stopped: Set currentConversation=', currentConversation);
-                }
-            });
-        }
-
-        function sendResponseCreate() {
-            log('sendResponseCreate()');
-            realtime?.send('response.create');
-        }
-
-        function sendResponseCancel(responseId) {
-            log(`sendResponseCancel(${responseId})`);
-            realtime?.send('response.cancel', {
-                response_id: responseId,
-            });
-        }
-
-        function pushToTalk(enable) {
-            log(`pushToTalk(enable=${enable})`);
-            if (enable) {
-                sendInterrupt();
-                microphone.enabled = true;
-                realtime?.send('input_audio_buffer.clear');
-            } else {
-                microphone.enabled = false;
-                realtime?.send('input_audio_buffer.commit');
-                sendResponseCreate();
-            }
-        }
-
-        function sendText(text) {
-            text = text || inputText.value;
-            log(`sendText("${text}")`);
-            realtime?.send('conversation.item.create', {
-                item: {
-                    type: 'message',
-                    role: 'user',
-                    content: [
-                        {
-                            type: 'input_text',
-                            text: text,
-                        }
-                    ]
-                },
-            });
-            sendResponseCreate();
-        }
-
-        function sendInterrupt() {
-            log('sendInterrupt()');
-            if (currentConversation === null) {
-                console.warn('No conversation item to interrupt');
-                return;
-            }
-            const elapsedMillis = Date.now() - currentConversation.startTime;
-            realtime?.send('conversation.item.truncate', {
-                item_id: currentConversation.itemId,
-                content_index: 0,
-                audio_end_ms: elapsedMillis,
-            });
-        }
+        init();
     </script>
 </body>
 
