@@ -17,7 +17,7 @@ export class RealtimeTransportWebRTC extends RealtimeTransport {
     return !!this.peerConnection;
   }
 
-  async connect({ sessionConfig, getMicrophoneCallback, setAudioOutputCallback }) {
+  async connect({ sessionConfig, setAudioOutputCallback, getMicrophoneCallback }) {
     super.connect();
     sessionConfig = {
       model: 'gpt-4o-mini-realtime-preview',
@@ -26,7 +26,7 @@ export class RealtimeTransportWebRTC extends RealtimeTransport {
     };
     this.log(`connect(sessionConfig=${JSON.stringify(sessionConfig)}, ...)`);
     const emphemeralApiToken = await this._requestEphemeralApiToken(this.apiKey, sessionConfig);
-    await this._init(emphemeralApiToken, sessionConfig.model, getMicrophoneCallback, setAudioOutputCallback);
+    await this._init(emphemeralApiToken, sessionConfig.model, setAudioOutputCallback, getMicrophoneCallback);
   }
 
   /**
@@ -50,12 +50,12 @@ export class RealtimeTransportWebRTC extends RealtimeTransport {
    * Initially from:
    * https://platform.openai.com/docs/guides/realtime-webrtc#connection-details
    */
-  async _init(ephemeralApiToken, model, getMicrophoneCallback, setAudioOutputCallback) {
+  async _init(ephemeralApiToken, model, setAudioOutputCallback, getMicrophoneCallback) {
     this.log(`init(...)`);
     this.peerConnection = new RTCPeerConnection();
 
-    this.peerConnection.addTrack(await getMicrophoneCallback());
     this.peerConnection.ontrack = (e) => setAudioOutputCallback(e.streams[0]);
+    this.peerConnection.addTrack(await getMicrophoneCallback());
 
     return new Promise(async (resolve, reject) => {
       const dataChannel = this.peerConnection?.createDataChannel('oai-events');

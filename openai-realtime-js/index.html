@@ -47,10 +47,53 @@
             margin-bottom: 10px;
         }
         */
+
+        input[type="radio"] {
+            /* Remove the default circle; we’ll draw our own. */
+            appearance: none;
+            -webkit-appearance: none;
+
+            /* Make a custom circle shape. */
+            width: 1.2em;
+            height: 1.2em;
+            border: 2px solid #ccc;
+            border-radius: 50%;
+            outline: none;
+            cursor: pointer;
+            vertical-align: middle;
+            margin-right: 6px;
+        }
+
+        /* The “checked” (selected) style. */
+        input[type="radio"]:checked {
+            background-color: #007bff;
+            border-color: #0056b3;
+        }
+
+        /* The “disabled” style for an un-checked radio. */
+        input[type="radio"]:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* The “disabled + checked” style. */
+        input[type="radio"]:disabled:checked {
+            background-color: #1a1af0;
+            border-color: #0a0aff;
+            opacity: 1;
+        }
+
+        /* Make label appear disabled if its radio input is disabled. */
+        input[type="radio"]:disabled+label {
+            color: #888;
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 
 <!-- `data-server-no-reload` prevents "Visual Studio Code Live Preview Extension" from auto-reloading the page. -->
+
 <body data-server-no-reload>
     <h2>OpenAI Realtime API</h2>
     <div style="display: flex; align-items: center;">
@@ -59,12 +102,18 @@
             oninput="onTextDangerousApiKeyChange()" />
     </div>
     <div style="display: flex; align-items: center;">
-        <input id="radioWebrtc" type="radio" name="connectionType" value="webrtc" checked>
-        <label for="radioWebrtc">WebRTC</label>
-        <input id="radioWebsocket" type="radio" name="connectionType" value="websocket">
-        <label for="radioWebsocket">WebSocket</label>
-        <button id="buttonConnectDisconnect" style="white-space: nowrap; margin-left: 10px;"
-            onclick="connectDisconnect()">Connect</button>
+        <div>
+            <input id="radioWebrtc" type="radio" name="connectionType" value="webrtc" checked>
+            <label for="radioWebrtc">WebRTC</label>
+        </div>
+        <div style="margin-left: 16px; margin-right: 16px;">
+            <input id="radioWebsocket" type="radio" name="connectionType" value="websocket">
+            <label for="radioWebsocket">WebSocket</label>
+        </div>
+        <button id="buttonConnectDisconnect" style="white-space: nowrap; margin-left: 10px; width: auto; flex: 1;"
+            onclick="connectDisconnect()">
+            Connect
+        </button>
     </div>
     <div>
         <audio id="audioControl" autoplay></audio>
@@ -89,8 +138,8 @@
 
     <!-- 1% tweaked version of https://github.com/openai/openai-realtime-api-beta -->
     <script type="module">
-        import { RealtimeAPI } from './openai-realtime-api-beta/api.js';
-        window.RealtimeAPI = RealtimeAPI;
+        import { RealtimeClient } from './openai-realtime-api-beta/client.js';
+        window.RealtimeClient = RealtimeClient;
         import { RealtimeTransportType } from './openai-realtime-api-beta/transport.js';
         window.RealtimeTransportType = RealtimeTransportType;
         import { RealtimeUtils } from './openai-realtime-api-beta/utils.js';

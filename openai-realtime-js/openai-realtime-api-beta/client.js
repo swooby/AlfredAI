@@ -241,7 +241,12 @@ export class RealtimeClient extends RealtimeEventHandler {
     this.sessionCreated = false;
     this.tools = {};
     this.sessionConfig = JSON.parse(JSON.stringify(this.defaultSessionConfig));
-    this.inputAudioBuffer = new Int16Array(0);
+    switch (this.realtime.transportType) {
+      case RealtimeTransportType.WEBSOCKET: {
+        this.inputAudioBuffer = new Int16Array(0);
+        break;
+      }
+    }
     return true;
   }
 
@@ -270,10 +275,9 @@ export class RealtimeClient extends RealtimeEventHandler {
     });
 
     // Handles session created event, can optionally wait for it
-    this.realtime.on(
-      'server.session.created',
-      () => (this.sessionCreated = true),
-    );
+    this.realtime.on('server.session.created', () => {
+      this.sessionCreated = true;
+    });
 
     // Setup for application control flow
     const handler = (event, ...args) => {
@@ -343,10 +347,7 @@ export class RealtimeClient extends RealtimeEventHandler {
       'server.conversation.item.input_audio_transcription.completed',
       handlerWithDispatch,
     );
-    this.realtime.on(
-      'server.response.audio_transcript.delta',
-      handlerWithDispatch,
-    );
+    this.realtime.on('server.response.audio_transcript.delta', handlerWithDispatch);
     this.realtime.on('server.response.audio.delta', handlerWithDispatch);
     this.realtime.on('server.response.text.delta', handlerWithDispatch);
     this.realtime.on(
@@ -370,8 +371,8 @@ export class RealtimeClient extends RealtimeEventHandler {
    * Tells us whether the realtime socket is connected and the session has started
    * @returns {boolean}
    */
-  isConnected() {
-    return this.realtime.isConnected();
+  get isConnected() {
+    return this.realtime.isConnected;
   }
 
   /**
@@ -388,15 +389,15 @@ export class RealtimeClient extends RealtimeEventHandler {
   }
 
   /**
-   * Connects to the Realtime WebSocket API
+   * Connects to the Realtime API
    * Updates session config and conversation config
    * @returns {Promise<true>}
    */
-  async connect() {
-    if (this.isConnected()) {
+  async connect({ sessionConfig, setAudioOutputCallback, getMicrophoneCallback }) {
+    if (this.isConnected) {
       throw new Error(`Already connected, use .disconnect() first`);
     }
-    await this.realtime.connect();
+    await this.realtime.connect({ sessionConfig, setAudioOutputCallback, getMicrophoneCallback });
     this.updateSession();
     return true;
   }
@@ -406,7 +407,7 @@ export class RealtimeClient extends RealtimeEventHandler {
    * @returns {Promise<true>}
    */
   async waitForSessionCreated() {
-    if (!this.isConnected()) {
+    if (!this.isConnected) {
       throw new Error(`Not connected, use .connect() first`);
     }
     while (!this.sessionCreated) {
@@ -420,7 +421,7 @@ export class RealtimeClient extends RealtimeEventHandler {
    */
   disconnect() {
     this.sessionCreated = false;
-    this.realtime.isConnected() && this.realtime.disconnect();
+    this.realtime.isConnected && this.realtime.disconnect();
     this.conversation.clear();
   }
 
@@ -486,6 +487,7 @@ export class RealtimeClient extends RealtimeEventHandler {
    */
   updateSession({
     modalities = void 0,
+    model = void 0,
     instructions = void 0,
     voice = void 0,
     input_audio_format = void 0,
@@ -498,6 +500,7 @@ export class RealtimeClient extends RealtimeEventHandler {
     max_response_output_tokens = void 0,
   } = {}) {
     modalities !== void 0 && (this.sessionConfig.modalities = modalities);
+    model !== void 0 && (this.sessionConfig.model = model);
     instructions !== void 0 && (this.sessionConfig.instructions = instructions);
     voice !== void 0 && (this.sessionConfig.voice = voice);
     input_audio_format !== void 0 &&
@@ -538,7 +541,7 @@ export class RealtimeClient extends RealtimeEventHandler {
     );
     const session = { ...this.sessionConfig };
     session.tools = useTools;
-    if (this.realtime.isConnected()) {
+    if (this.realtime.isConnected) {
       this.realtime.send('session.update', { session });
     }
     return true;
@@ -571,11 +574,15 @@ export class RealtimeClient extends RealtimeEventHandler {
   }
 
   /**
-   * Appends user audio to the existing audio buffer
+   * Appends user audio to the existing audio buffer.
+   * Only used by WebSocket.
    * @param {Int16Array|ArrayBuffer} arrayBuffer
    * @returns {true}
    */
   appendInputAudio(arrayBuffer) {
+    if (this.realtime.transportType !== RealtimeTransportType.WEBSOCKET) {
+      throw new Error(`appendInputAudio is only supported for WebSocket transport`);
+    }
     if (arrayBuffer.byteLength > 0) {
       this.realtime.send('input_audio_buffer.append', {
         audio: RealtimeUtils.arrayBufferToBase64(arrayBuffer),
@@ -595,7 +602,7 @@ export class RealtimeClient extends RealtimeEventHandler {
   createResponse() {
     if (
       this.getTurnDetectionType() === null &&
-      this.inputAudioBuffer.byteLength > 0
+      this.inputAudioBuffer?.byteLength > 0
     ) {
       this.realtime.send('input_audio_buffer.commit');
       this.conversation.queueInputAudio(this.inputAudioBuffer);

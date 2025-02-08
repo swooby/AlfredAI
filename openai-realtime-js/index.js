@@ -20,19 +20,20 @@ let buttonSendText;
 let buttonInterrupt;
 let buttonPushToTalk;
 
-// Only needed/used by WebRTC?
+// Only needed/used by WebRTC
 let microphone;
 
-// Only needed/used by WebSockets?
+// Only needed/used by WebSockets
 let wavStreamPlayer;
 let wavRecorder;
 let inputAudioBuffer;
 
+// Either 'WEBRTC' or 'WEBSOCKET'
 let connectionType;
 
-let realtime;
+let client;
 
-let currentConversation;
+let currentAssistentConversation;
 
 function log(...args) {
     if (debug) {
@@ -82,7 +83,7 @@ function onTextDangerousApiKeyChange() {
 
 function connectDisconnect() {
     log('connectDisconnect()');
-    if (realtime) {
+    if (client) {
         disconnect();
     } else {
         connect();
@@ -92,26 +93,22 @@ function connectDisconnect() {
 function sendText(text) {
     text = text || inputText.value;
     log(`sendText("${text}")`);
-    sendUserMessageContent([{
+    client.sendUserMessageContent([{
         type: 'input_text',
         text: text,
     }]);
 }
 
 function sendInterrupt() {
-    if (!currentConversation) {
-        log('sendInterrupt(): No conversation item to interrupt; ignoring');
+    if (!currentAssistentConversation) {
+        log('sendInterrupt(): No current assistent conversation item to interrupt; ignoring');
         return;
     }
-    log('sendInterrupt()');
-    // NOTE: `client.js` `cancelResponse` sends `response.cancel` [with no `response_id`] **BEFORE** `conversation.item.truncate`
-    sendResponseCancel();//currentConversation.responseId);
-    const elapsedMillis = Date.now() - currentConversation.startTime;
-    realtime?.send('conversation.item.truncate', {
-        item_id: currentConversation.itemId,
-        content_index: 0,
-        audio_end_ms: elapsedMillis,
-    });
+    const item = currentAssistentConversation.item;
+    const elapsedMillis = Date.now() - currentAssistentConversation.startTime;
+    const sampleCount = Math.floor(elapsedMillis / 1000.0 * client.conversation.defaultFrequency);
+    log(`sendInterrupt(); cancelResponse(itemId=${item.id}, sampleCount=${sampleCount}`);
+    client.cancelResponse(item.id, sampleCount);
 }
 
 async function pushToTalk(enable) {
@@ -119,12 +116,34 @@ async function pushToTalk(enable) {
     if (enable) {
         await audioPlayerStop();
         sendInterrupt();
-        realtime?.send('input_audio_buffer.clear');
+        client?.realtime.send('input_audio_buffer.clear');
         await audioRecorderStart();
     } else {
         await audioRecorderStop();
-        realtime?.send('input_audio_buffer.commit');
-        sendResponseCreate();
+        client?.realtime.send('input_audio_buffer.commit');
+        client.createResponse();
+    }
+}
+
+function onConversationEvent(eventName, {item, delta}) {
+    switch (eventName) {
+        case 'conversation.updated':
+            if (item.role === 'assistant' &&
+                item.id !== currentAssistentConversation?.item.id) {
+                currentAssistentConversation = {
+                    item,
+                    startTime: Date.now(),
+                }
+                log('conversation.updated: Set currentAssistentConversation=', currentAssistentConversation);
+            }
+            break;
+        case 'conversation.item.completed':
+            if (item.role == 'assistant' &&
+                item.id === currentAssistentConversation?.item.id) {
+                currentAssistentConversation = null;
+                log('conversation.item.completed: Set currentAssistentConversation=null');
+            }
+            break;
     }
 }
 
@@ -133,7 +152,7 @@ async function pushToTalk(enable) {
 //
 
 function updateControls() {
-    if (realtime) {
+    if (client) {
         textDangerousApiKey.disabled = true;
         radioWebrtc.disabled = true;
         radioWebsocket.disabled = true;
@@ -175,8 +194,8 @@ async function disconnect() {
     }
     inputAudioBuffer = null;
 
-    realtime?.disconnect();
-    realtime = null;
+    client?.disconnect();
+    client = null;
 
     updateControls();
 }
@@ -184,8 +203,8 @@ async function disconnect() {
 async function connect() {
     await disconnect();
 
-    let getMicrophoneCallback;
     let setAudioOutputCallback;
+    let getMicrophoneCallback;
 
     console.info('For this app you may reasonably ignore the proceeding `Warning: Connecting using API key in the browser, this is not recommended`');
     const dangerousApiKey = textDangerousApiKey.value;
@@ -193,85 +212,62 @@ async function connect() {
     // Is there a better/easier way to get the selected/checked item of a radio button group?
     connectionType = document.querySelector('input[name="connectionType"]:checked').value.toUpperCase();
 
-    realtime = new RealtimeAPI({
+    client = new RealtimeClient({
         transportType: connectionType,
         apiKey: dangerousApiKey,
         dangerouslyAllowAPIKeyInBrowser: true,
         debug: debugRealtimeApi,
     });
+    client.on('close', (data) => {
+        log('close', data);
+        disconnect();
+    });
 
     switch (connectionType) {
         case RealtimeTransportType.WEBRTC:
+            setAudioOutputCallback = (audioSource) => {
+                audioControl.srcObject = audioSource;
+            };
             getMicrophoneCallback = async () => {
                 const ms = await navigator.mediaDevices.getUserMedia({ audio: true });
                 microphone = ms.getAudioTracks()[0];
                 microphone.enabled = false;
                 return microphone;
             };
-            setAudioOutputCallback = (audioSource) => {
-                audioControl.srcObject = audioSource;
-            };
-
-            realtime.on('server.output_audio_buffer.stopped', (event) => {
-                log('server.output_audio_buffer.stopped', event);
-                const responseId = event.response_id;
-                if (responseId === currentConversation?.responseId) {
-                    currentConversation = null;
-                    log('server.output_audio_buffer.audio_stopped: Set currentConversation=', currentConversation);
-                }
-            });
-        
             break;
         case RealtimeTransportType.WEBSOCKET:
             wavStreamPlayer = new WavStreamPlayer({ sampleRate: 24000 });
             await wavStreamPlayer.connect();
-            realtime.on('server.response.audio.delta', (event) => {
-                //log('server.response.audio.delta', event);
-                //const responseId = event.response_id;
-                const itemId = event.item_id;
-                const delta = event.delta;
-                const arrayBuffer = RealtimeUtils.base64ToArrayBuffer(delta);
-                wavStreamPlayer.add16BitPCM(arrayBuffer, itemId);
+            client.on('conversation.updated', ({ item, delta }) => {
+                if (delta?.audio) {
+                    wavStreamPlayer.add16BitPCM(delta.audio, item.id);
+                }
             });
-
             inputAudioBuffer = new Int16Array(0);
             wavRecorder = new WavRecorder({ sampleRate: 24000 });
             await wavRecorder.begin();
             // Will start in pushToTalk(true) and stop in pushToTalk(false)
-
-            realtime.on('server.response.content_part.done', (event) => {
-                //log('response.content_part.done', event);
-                const responseId = event.response_id;
-                if (responseId === currentConversation?.responseId) {
-                    currentConversation = null;
-                    log('server.response.content_part.done: Set currentConversation=', currentConversation);
-                }
-            });
-    
             break;
         default:
             throw new Error(`Unknown connection type: "${connectionType}"`);
     }
 
+    /*
     if (textareaConversation !== null) {
-        realtime.on('server.response.audio_transcript.delta', (event) => {
+        client.on('server.response.audio_transcript.delta', (event) => {
             //log('server.response.audio_transcript.delta', event);
             const responseId = event.response_id;
             const delta = event.delta; // DO **NOT** TRIM!
             textareaConversation.value += delta;
         });
     }
-    realtime.on('server.response.content_part.added', (event) => {
-        //log('server.response.content_part.added', event);
-        const responseId = event.response_id;
-        if (responseId !== currentConversation?.responseId) {
-            currentConversation = {
-                itemId: event.item_id,
-                responseId: responseId,
-                startTime: Date.now(),
-            };
-            log('server.response.content_part.added: Set currentConversation=', currentConversation);
-        }
+    */
+
+    client.on('conversation.updated', ({ item , delta}) => {
+        onConversationEvent('conversation.updated', {item, delta});
+    });
+    client.on('conversation.item.completed', ({ item }) => {
+        onConversationEvent('conversation.item.completed', {item});
     });
 
     updateControls();
@@ -282,90 +278,8 @@ async function connect() {
         turn_detection: null,
     };
 
-    await realtime.connect({ sessionConfig, getMicrophoneCallback, setAudioOutputCallback });
-
-    await realtime.send('session.update', {
-        session: sessionConfig
-    });
-}
-
-/**
- * Variation of `client.js`'s `cancelResponse(id, sampleCount = 0)`
- */
-function sendResponseCancel(responseId) {
-    log(`sendResponseCancel(${responseId})`);
-    /**
-     * Interestingly, in `client.js`'s `cancelResponse(id, sampleCount = 0)`:
-     * 1. It only ever sends an empty `'response.cancel'; it **NEVER** adds a `response_id` to the payload!
-     * 2. `id` is actually the **item_id**, and it used to send `conversation.item.truncate`.
-     * 3. Says that only role=assistant type=message items with audio content can be truncated.
-     * 4. Sends a [empty] `response.cancel` message and **BEFORE** checking for audio content.
-     * 5. Find and sends the `content_index`, even though the documentation says "Set this to 0.".
-     *  https://platform.openai.com/docs/api-reference/realtime-client-events/conversation/item/truncate#realtime-client-events/conversation/item/truncate-content_index
-     * 
-     * Seems like a lot of unnecessary logic overloaded into their `cancelResponse` function. :/
-     * I think it is fine to just do any needful extras outside of this function,
-     * and leave this function to just do what is says it does: send `response.cancel`...
-     * with the optional documented `response_id`.
-     */
-    realtime?.send('response.cancel', {
-        response_id: responseId,
-    });
-}
-
-/**
- * Variation of `client.js`'s `createResponse()`
- */
-function sendResponseCreate() {
-    log('sendResponseCreate()');
-    realtime?.send('response.create');
-}
-
-/**
- * Originally copied from `client.js`
- * Sends user message content and generates a response
- * @param {Array<InputTextContentType|InputAudioContentType>} content
- * @returns {true}
- */
-function sendUserMessageContent(content = []) {
-    if (content.length) {
-        for (const c of content) {
-            if (c.type === 'input_audio') {
-                if (c.audio instanceof ArrayBuffer || c.audio instanceof Int16Array) {
-                    c.audio = RealtimeUtils.arrayBufferToBase64(c.audio);
-                }
-            }
-        }
-        realtime?.send('conversation.item.create', {
-            item: {
-                type: 'message',
-                role: 'user',
-                content,
-            },
-        });
-    }
-    sendResponseCreate();
-    return true;
-}
-
-/**
- * Originally copied from `client.js`
- * Only used by WebSocket.
- * Appends user audio to the existing audio buffer
- * @param {Int16Array|ArrayBuffer} arrayBuffer
- * @returns {true}
- */
-function appendInputAudio(arrayBuffer) {
-    if (arrayBuffer.byteLength > 0) {
-        realtime?.send('input_audio_buffer.append', {
-            audio: RealtimeUtils.arrayBufferToBase64(arrayBuffer),
-        });
-        inputAudioBuffer = RealtimeUtils.mergeInt16Arrays(
-            inputAudioBuffer,
-            arrayBuffer,
-        );
-    }
-    return true;
+    await client.connect({ sessionConfig, setAudioOutputCallback, getMicrophoneCallback });
+    await client.updateSession(sessionConfig);
 }
 
 /**
@@ -394,7 +308,7 @@ async function audioRecorderStart() {
             break;
         case RealtimeTransportType.WEBSOCKET:
             await wavRecorder.clear();
-            await wavRecorder.record((data) => appendInputAudio(data.mono));
+            await wavRecorder.record((data) => client.appendInputAudio(data.mono));
             break;
     }
 }

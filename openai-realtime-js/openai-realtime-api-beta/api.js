@@ -27,8 +27,9 @@ export class RealtimeAPI extends RealtimeEventHandler {
         throw new Error(`Invalid transportType: "${transportType}"`);
       }
     }
-    this.transport.on('close', () => {
+    this.transport.on('close', (data) => {
       this.disconnect();
+      this.dispatch('close', data);
     });
     this.transport.on('message', (event) => {
       const message = JSON.parse(event.data);
@@ -73,8 +74,8 @@ export class RealtimeAPI extends RealtimeEventHandler {
    * @param {{model?: string}} [settings]
    * @returns {Promise<true>}
    */
-  async connect({ sessionConfig, getMicrophoneCallback, setAudioOutputCallback }) {
-    return this.transport.connect({ sessionConfig, getMicrophoneCallback, setAudioOutputCallback });
+  async connect({ sessionConfig, setAudioOutputCallback, getMicrophoneCallback }) {
+    return this.transport.connect({ sessionConfig, setAudioOutputCallback, getMicrophoneCallback });
   }
 
   /**
