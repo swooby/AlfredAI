@@ -8,7 +8,6 @@ import com.openai.infrastructure.RequestConfig
 import com.openai.infrastructure.RequestMethod
 import com.openai.infrastructure.Success
 import com.openai.models.RealtimeSessionCreateRequest
-import com.openai.models.RealtimeSessionModel
 import com.swooby.alfredai.Utils.quote
 import com.swooby.alfredai.Utils.redact
 import com.swooby.alfredai.common.BuildConfig
@@ -69,7 +68,7 @@ class RealtimeTransportWebRTC(
      * Send the offer SDP to OpenAI’s Realtime endpoint and get the answer SDP back.
      */
     private fun requestOpenAiRealtimeSdp(
-        model: RealtimeSessionModel,
+        model: RealtimeSessionCreateRequest.Model?,
         ephemeralApiKey: String,
         offerSdp: String): String? {
 

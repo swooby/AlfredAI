@@ -128,7 +128,7 @@ abstract class RealtimeTransportBase(
              * https://platform.openai.com/docs/guides/realtime-webrtc#creating-an-ephemeral-token
              * https://platform.openai.com/docs/api-reference/realtime-sessions/create
              */
-            val realtimeSessionCreateResponse: RealtimeSessionCreateResponse? = try {
+            val realtimeSessionCreateResponse = try {
                 if (debugInduceMysteriousUnknownHostException) {
                     throw UnknownHostException(MYSTERIOUS_UNKNOWN_HOST_EXCEPTION_MESSAGE)
                 }

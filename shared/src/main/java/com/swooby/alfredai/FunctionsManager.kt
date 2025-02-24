@@ -2,7 +2,7 @@ package com.swooby.alfredai
 
 import android.content.Context
 import android.util.Log
-import com.openai.models.RealtimeSessionTools
+import com.openai.models.RealtimeResponseCreateParamsToolsInner
 import com.swooby.alfredai.Utils.quote
 import com.swooby.alfredai.Utils.showToast
 import org.json.JSONObject
@@ -17,7 +17,7 @@ class FunctionsManager(private val applicationContext: Context) {
             name: String,
             description: String,
             parameters: Map<String, Any>,
-            ): FunctionInfo {
+        ): FunctionInfo {
             // OpenAI error response:
             // `Expected a string that matches the pattern '^[a-zA-Z0-9_-]+$'`
             require(name.matches(Regex("^[a-zA-Z0-9_-]+$"))) {
@@ -26,8 +26,8 @@ class FunctionsManager(private val applicationContext: Context) {
             return FunctionInfo(
                 enabled = enabled,
                 function = function,
-                tool = RealtimeSessionTools(
-                    type = RealtimeSessionTools.Type.function,
+                tool = RealtimeResponseCreateParamsToolsInner(
+                    type = RealtimeResponseCreateParamsToolsInner.Type.function,
                     name = name,
                     description = description,
                     parameters = parameters
@@ -46,7 +46,7 @@ class FunctionsManager(private val applicationContext: Context) {
     data class FunctionInfo(
         var enabled: Boolean = true,
         val function: (JSONObject) -> String,
-        val tool: RealtimeSessionTools
+        val tool: RealtimeResponseCreateParamsToolsInner
     )
 
     private val functionsMap = mutableMapOf<String, FunctionInfo>().apply {
@@ -78,7 +78,7 @@ class FunctionsManager(private val applicationContext: Context) {
         // TODO: task_delete
     }.toMap()
 
-    fun getFunctions(includeDisabled: Boolean = false): List<RealtimeSessionTools> {
+    fun getFunctions(includeDisabled: Boolean = false): List<RealtimeResponseCreateParamsToolsInner> {
         return functionsMap.values.filter { it.enabled }.map { it.tool }
     }
 

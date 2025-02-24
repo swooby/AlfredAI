@@ -89,3 +89,21 @@ OpenAI Realtime API over WebRTC Push-To-Talk Android Phone[/Mobile] + Watch[/Wea
    * `brew install scrcpy`
    * `scrcpy -s 10.0.0.113:43999 --record=wear.mp4 & scrcpy -s 10.0.0.137:46129 --record=mobile.mp4 &`  
      (replace the ip address and port with yours)
+
+## Inspiration
+
+* Frank Fu
+   * https://www.youtube.com/@frankfu007
+   * https://github.com/FrankFuAM and https://github.com/fuwei007
+   * https://github.com/fuwei007/OpenAIAndroidRealtimeDemo
+      * https://github.com/fuwei007/OpenAIAndroidRealtimeDemo/blob/main/app/src/main/java/com/navbot/aihelper/RealTimeActivity.kt
+      * https://www.youtube.com/shorts/6mSSSK_whYk
+   * https://youtu.be/oMKOtYQljM4 "Demo OpenAI Real-time API with WebRTC | React Native Demo"
+      * https://github.com/fuwei007/OpenAIRealTimeAPIWebRTC-ReactNative
+   * https://youtu.be/BZRRwocw71Q "Building .NET Component Using OpenAI Real-Time API Part 5|Support WebRTC | Conversation Control"
+      * Shows VAD interruption working ok! :/
+      * https://github.com/fuwei007/OpenAI-realtimeapi-dotnetsdk
+      * https://github.com/FrankFuAM/OpenAI-realtimeapi-dotnetsdk
+* https://github.com/akdeb/openai-realtime-console, fork of https://github.com/openai/openai-realtime-console
+   * Comparison: https://github.com/openai/openai-realtime-console/compare/main...akdeb:openai-realtime-console:main
+* https://github.com/CadiZhang/realtime_vision_assistant, fork of https://github.com/openai/openai-realtime-console

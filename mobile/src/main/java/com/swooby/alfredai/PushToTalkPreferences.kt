@@ -46,11 +46,12 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.openai.models.RealtimeSessionCreateRequest
+import com.openai.models.RealtimeSessionCreateRequestInputAudioTranscription
+import com.openai.models.RealtimeSessionCreateRequestTurnDetection
 import com.openai.models.RealtimeSessionInputAudioTranscription
 import com.openai.models.RealtimeSessionMaxResponseOutputTokens
-import com.openai.models.RealtimeSessionModel
 import com.openai.models.RealtimeSessionTurnDetection
-import com.openai.models.RealtimeSessionVoice
 import com.swooby.alfredai.AppUtils.annotatedStringFromHtml
 import com.swooby.alfredai.PushToTalkPreferences.Companion.MAX_RESPONSE_OUTPUT_TOKENS
 import com.swooby.alfredai.PushToTalkPreferences.Companion.instructionsDefault
@@ -64,7 +65,7 @@ class PushToTalkPreferences(context: Context) {
 
         val apiKeyDefault = BuildConfig.DANGEROUS_OPENAI_API_KEY
 
-        val modelDefault = RealtimeSessionModel.`gpt-4o-mini-realtime-preview-2024-12-17`
+        val modelDefault = RealtimeSessionCreateRequest.Model.`gpt-4o-mini-realtime-preview`
 
         /**
          * This (and all other) default value can be seen
@@ -84,13 +85,13 @@ class PushToTalkPreferences(context: Context) {
         val instructionsDefault = "Always respond in English. $instructionsDefaultOpenAI"
         val instructionsDefaultAlfredAI = "You are Batman's loyal, smart, and trustworthy bad-ass dark assistant and butler, Alfred. $instructionsDefault"
 
-        val voiceDefault = RealtimeSessionVoice.ash
+        val voiceDefault = RealtimeSessionCreateRequest.Voice.ash
 
         // Transcription costs noticeably more money, so turn it off and enable in Preferences if we really want it
         val inputAudioTranscriptionDefault = null
 
         // No turn_detection; We will be PTTing...
-        val turnDetectionDefault: RealtimeSessionTurnDetection? = null
+        val turnDetectionDefault: RealtimeSessionCreateRequestTurnDetection? = null
 
         val temperatureDefault = 0.8f
 
@@ -188,10 +189,10 @@ class PushToTalkPreferences(context: Context) {
             putString("apiKey", apiKeyEncrypted)
         }
 
-    var model: RealtimeSessionModel
+    var model: RealtimeSessionCreateRequest.Model
         get() {
             return getString("model", modelDefault.name).let {
-                RealtimeSessionModel.valueOf(it)
+                RealtimeSessionCreateRequest.Model.valueOf(it)
             }
         }
         set(value) {
@@ -202,24 +203,24 @@ class PushToTalkPreferences(context: Context) {
         get() = getString("instructions", instructionsDefault)
         set(value) = putString("instructions", value)
 
-    var voice: RealtimeSessionVoice
+    var voice: RealtimeSessionCreateRequest.Voice
         get() {
             return getString("voice", voiceDefault.name).let {
-                RealtimeSessionVoice.valueOf(it)
+                RealtimeSessionCreateRequest.Voice.valueOf(it)
             }
         }
         set(value) {
             putString("voice", value.name)
         }
 
-    var inputAudioTranscription: RealtimeSessionInputAudioTranscription?
+    var inputAudioTranscription: RealtimeSessionCreateRequestInputAudioTranscription?
         get() {
             return getString("inputAudioTranscription", "").let {
-                if (it == "") null else RealtimeSessionInputAudioTranscription(model = RealtimeSessionInputAudioTranscription.Model.valueOf(it))
+                if (it == "") null else RealtimeSessionCreateRequestInputAudioTranscription(model = RealtimeSessionCreateRequestInputAudioTranscription.Model.valueOf(it))
             }
         }
         set(value) {
-            putString("inputAudioTranscription", value?.model?.name ?: "")
+            putString("inputAudioTranscription", value?.model?.value ?: "")
         }
 
     var temperature: Float
@@ -388,7 +389,7 @@ fun PushToTalkPreferenceScreen(
                     expanded = expanded,
                     onDismissRequest = { expanded = false }
                 ) {
-                    RealtimeSessionModel.entries.forEach { model ->
+                    RealtimeSessionCreateRequest.Model.entries.forEach { model ->
                         DropdownMenuItem(
                             text = { Text(model.name) },
                             onClick = {
@@ -468,7 +469,7 @@ fun PushToTalkPreferenceScreen(
                     expanded = expanded,
                     onDismissRequest = { expanded = false }
                 ) {
-                    RealtimeSessionVoice.entries.forEach { voice ->
+                    RealtimeSessionCreateRequest.Voice.entries.forEach { voice ->
                         DropdownMenuItem(
                             text = { Text(voice.name) },
                             onClick = {
@@ -508,12 +509,12 @@ fun PushToTalkPreferenceScreen(
                             expanded = false
                         }
                     )
-                    RealtimeSessionInputAudioTranscription.Model.entries.forEach {
+                    RealtimeSessionCreateRequestInputAudioTranscription.Model.entries.forEach {
                         DropdownMenuItem(
                             text = { Text(it.name) },
                             onClick = {
                                 editedInputAudioTranscription =
-                                    RealtimeSessionInputAudioTranscription(model = it)
+                                    RealtimeSessionCreateRequestInputAudioTranscription(model = it)
                                 expanded = false
                             }
                         )

@@ -366,7 +366,7 @@ fun MobileApp(mobileViewModel: MobileViewModelInterface) {
                                     modifier = Modifier.padding(start = 4.dp),
                                     text = "Conversation:",
                                 )
-                                IconButton(onClick = { mobileViewModel?.conversationItemsClear() }) {
+                                IconButton(onClick = { mobileViewModel.conversationItemsClear() }) {
                                     Icon(
                                         painterResource(id = R.drawable.baseline_clear_all_24),
                                         contentDescription = "Clear All",
@@ -561,7 +561,7 @@ fun MobileApp(mobileViewModel: MobileViewModelInterface) {
                                 var inputText by remember { mutableStateOf("") }
 
                                 fun doSendInputText() {
-                                    mobileViewModel?.sendText(inputText)
+                                    mobileViewModel.sendText(inputText)
                                     inputText = ""
                                 }
 
@@ -632,7 +632,7 @@ fun MobileApp(mobileViewModel: MobileViewModelInterface) {
                                         text = "Reconnecting",
                                         forceInvokeOnMain = true,
                                     )
-                                    mobileViewModel?.reconnect()
+                                    mobileViewModel.reconnect()
                                 },
                                 modifier = Modifier
                                     .size(66.dp)

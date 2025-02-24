@@ -61,10 +61,8 @@ import com.openai.models.RealtimeServerEventResponseTextDone
 import com.openai.models.RealtimeServerEventSessionCreated
 import com.openai.models.RealtimeServerEventSessionUpdated
 import com.openai.models.RealtimeSessionCreateRequest
+import com.openai.models.RealtimeSessionCreateRequestInputAudioTranscription
 import com.openai.models.RealtimeSessionInputAudioTranscription
-import com.openai.models.RealtimeSessionModel
-import com.openai.models.RealtimeSessionTools
-import com.openai.models.RealtimeSessionVoice
 import com.swooby.alfredai.PushToTalkPreferences.Companion.getMaxResponseOutputTokens
 import com.swooby.alfredai.Utils.audioManagerScoStateToString
 import com.swooby.alfredai.Utils.bluetoothHeadsetStateToString
@@ -365,10 +363,10 @@ class MobileViewModel(application: Application) :
     override fun updatePreferences(
         autoConnect: Boolean,
         apiKey: String,
-        model: RealtimeSessionModel,
+        model: RealtimeSessionCreateRequest.Model,
         instructions: String,
-        voice: RealtimeSessionVoice,
-        inputAudioTranscription: RealtimeSessionInputAudioTranscription?,
+        voice: RealtimeSessionCreateRequest.Voice,
+        inputAudioTranscription: RealtimeSessionCreateRequestInputAudioTranscription?,
         temperature: Float,
         maxResponseOutputTokens: Int,
     ) {
