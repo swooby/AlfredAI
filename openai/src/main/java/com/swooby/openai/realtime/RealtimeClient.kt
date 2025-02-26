@@ -97,30 +97,36 @@ class RealtimeClient(
         transport.removeListener(listener)
     }
 
-    protected val realtime = RealtimeApi(client = httpClient)
+    private val realtime = RealtimeApi(
+        client = httpClient,
+    )
 
     private val transport = RealtimeTransportBase.create(
-        transportType,
-        applicationContext,
-        dangerousApiKey,
-        sessionConfig,
-        httpClient,
-        realtime,
-        debug
+        transportType = transportType,
+        applicationContext = applicationContext,
+        dangerousApiKey = dangerousApiKey,
+        sessionConfig = sessionConfig,
+        httpClient = httpClient,
+        realtime = realtime,
+        debug = debug,
     )
 
     init {
         transport.addListener(object : RealtimeTransportListener {
             override fun onConnecting() {
+                //...?
             }
 
             override fun onConnected() {
+                this@RealtimeClient.onConnected()
             }
 
             override fun onDisconnected() {
+                //...?
             }
 
             override fun onError(error: Exception) {
+                //...?
             }
 
             override fun onDataChannelOpened() {
@@ -157,6 +163,12 @@ class RealtimeClient(
     override fun disconnect() {
         isCancelingResponse = false
         transport.disconnect()
+    }
+
+    private fun onConnected() {
+        log.i("onConnected(); starting off muting mic and speaker")
+        setLocalAudioTrackMicrophoneEnabled(false)
+        setLocalAudioTrackSpeakerEnabled(false)
     }
 
     override fun setLocalAudioTrackSpeakerEnabled(enabled: Boolean) {
