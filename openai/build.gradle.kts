@@ -1,11 +1,10 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
 }
 
 android {
-    namespace = "com.swooby.alfredai.common"
+    namespace = "com.swooby.openai"
     compileSdk = 35
 
     defaultConfig {
@@ -34,23 +33,21 @@ android {
     }
     buildFeatures {
         buildConfig = true
-        compose = true
     }
 }
 
 dependencies {
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.wear.phone.interactions)
-    implementation(libs.material)
-    implementation(libs.play.services.wearable)
-
+    implementation(libs.androidx.core.ktx)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
 
-    // Used by FunctionsManager; candidate to move to project `openai`
-    implementation(project(":openai-kotlin-client"))
+    api(platform(libs.squareup.okhttp3.bom))
+    api(libs.squareup.okhttp3)
+    implementation(libs.squareup.okhttp3.logging.interceptor)
 
-    api(project(":utils"))
+    implementation(libs.webrtc.sdk.android)
+
+    implementation(project(":utils"))
+    api(project(":openai-kotlin-client"))
 }

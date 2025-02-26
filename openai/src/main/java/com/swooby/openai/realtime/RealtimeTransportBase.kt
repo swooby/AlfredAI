@@ -1,4 +1,4 @@
-package com.swooby.alfredai.openai.realtime
+package com.swooby.openai.realtime
 
 import android.content.Context
 import android.os.SystemClock
@@ -6,10 +6,9 @@ import com.openai.apis.RealtimeApi
 import com.openai.infrastructure.ApiClient
 import com.openai.infrastructure.ClientException
 import com.openai.models.RealtimeSessionCreateRequest
-import com.openai.models.RealtimeSessionCreateResponse
-import com.swooby.alfredai.Utils.quote
-import com.swooby.alfredai.Utils.redact
-import com.swooby.alfredai.common.BuildConfig
+import com.swooby.Utils.quote
+import com.swooby.Utils.redact
+import com.swooby.openai.BuildConfig
 import okhttp3.OkHttpClient
 import java.net.UnknownHostException
 

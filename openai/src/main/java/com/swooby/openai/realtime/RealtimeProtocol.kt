@@ -1,4 +1,4 @@
-package com.swooby.alfredai.openai.realtime
+package com.swooby.openai.realtime
 
 import com.openai.models.RealtimeConversationItem
 import com.openai.models.RealtimeServerEventConversationCreated
@@ -30,8 +30,8 @@ import com.openai.models.RealtimeServerEventResponseTextDone
 import com.openai.models.RealtimeServerEventSessionCreated
 import com.openai.models.RealtimeServerEventSessionUpdated
 import com.openai.models.RealtimeSessionCreateRequest
-import com.swooby.alfredai.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStarted
-import com.swooby.alfredai.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
+import com.swooby.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStarted
+import com.swooby.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
 
 interface RealtimeProtocol {
     fun dataSendSessionUpdate(sessionConfig: RealtimeSessionCreateRequest): Boolean

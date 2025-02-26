@@ -3,8 +3,8 @@ package com.swooby.alfredai
 import android.content.Context
 import android.util.Log
 import com.openai.models.RealtimeResponseCreateParamsToolsInner
-import com.swooby.alfredai.Utils.quote
-import com.swooby.alfredai.Utils.showToast
+import com.swooby.Utils.quote
+import com.swooby.Utils.showToast
 import org.json.JSONObject
 
 class FunctionsManager(private val applicationContext: Context) {

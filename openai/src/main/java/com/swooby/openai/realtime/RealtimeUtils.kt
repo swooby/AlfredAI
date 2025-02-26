@@ -1,4 +1,4 @@
-package com.swooby.alfredai.openai.realtime
+package com.swooby.openai.realtime
 
 object RealtimeUtils {
     /**

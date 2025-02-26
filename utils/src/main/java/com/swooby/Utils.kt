@@ -1,13 +1,13 @@
-package com.swooby.alfredai
+package com.swooby
 
 import android.bluetooth.BluetoothHeadset
 import android.content.Context
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.util.JsonReader
 import android.util.Log
 import android.widget.Toast
-import androidx.wear.phone.interactions.PhoneTypeHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -117,6 +117,23 @@ object Utils {
         return intFieldToName(AudioManager::class, "SCO_AUDIO_STATE_", state)
     }
 
+    fun audioDeviceInfoToString(audioDeviceInfo: AudioDeviceInfo): String {
+        val id = audioDeviceInfo.id
+        val type = audioDeviceInfo.type.let {
+            (getMapOfIntFieldsToNames(AudioDeviceInfo::class, "TYPE_")
+                [it] ?: "INVALID") + "(${it})"
+        }
+        val productName = audioDeviceInfo.productName
+//        audioDeviceInfo.address
+//        audioDeviceInfo.audioProfiles
+//        audioDeviceInfo.audioDescriptors
+//        audioDeviceInfo.sampleRates
+//        audioDeviceInfo.encodings
+//        audioDeviceInfo.isSink
+//        audioDeviceInfo.isSource
+        return "id=$id, type=$type, productName=${quote(productName)}"
+    }
+
     fun playAudioResourceOnce(
         context: Context,
         audioResourceId: Int,
@@ -135,6 +152,28 @@ object Utils {
             start()
         }
     }
+
+    /*
+    fun provideAudibleFeedback(context: Context, pttState: PttState) {
+        val resId = when (pttState) {
+            PttState.Idle -> R.raw.quindar_nasa_apollo_outro
+            PttState.Pressed -> R.raw.quindar_nasa_apollo_intro
+        }
+        val mediaPlayer = MediaPlayer.create(context, resId)
+        mediaPlayer.start()
+        mediaPlayer.setOnCompletionListener {
+            it.release()
+        }
+    }
+
+    fun provideHapticFeedback(context: Context) {
+        val vibrator = context.getSystemService(VibratorManager::class.java)
+            ?.defaultVibrator ?: context.getSystemService(Vibrator::class.java)
+        vibrator?.vibrate(
+            VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE)
+        )
+    }
+    */
 
     fun getFriendlyPermissionName(permission: String): String {
         return when (permission) {

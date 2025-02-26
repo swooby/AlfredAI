@@ -1,4 +1,4 @@
-package com.swooby.alfredai.openai.realtime
+package com.swooby.openai.realtime
 
 import android.content.Context
 import android.os.SystemClock
@@ -44,9 +44,9 @@ import com.openai.models.RealtimeServerEventResponseTextDone
 import com.openai.models.RealtimeServerEventSessionCreated
 import com.openai.models.RealtimeServerEventSessionUpdated
 import com.openai.models.RealtimeSessionCreateRequest
-import com.swooby.alfredai.Utils.extractValue
-import com.swooby.alfredai.Utils.quote
-import com.swooby.alfredai.common.BuildConfig
+import com.swooby.Utils.extractValue
+import com.swooby.Utils.quote
+import com.swooby.openai.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -106,7 +106,8 @@ class RealtimeClient(
         sessionConfig,
         httpClient,
         realtime,
-        debug)
+        debug
+    )
 
     init {
         transport.addListener(object : RealtimeTransportListener {

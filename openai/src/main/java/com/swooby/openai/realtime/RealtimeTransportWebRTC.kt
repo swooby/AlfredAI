@@ -1,4 +1,4 @@
-package com.swooby.alfredai.openai.realtime
+package com.swooby.openai.realtime
 
 import android.content.Context
 import com.openai.apis.RealtimeApi
@@ -8,9 +8,9 @@ import com.openai.infrastructure.RequestConfig
 import com.openai.infrastructure.RequestMethod
 import com.openai.infrastructure.Success
 import com.openai.models.RealtimeSessionCreateRequest
-import com.swooby.alfredai.Utils.quote
-import com.swooby.alfredai.Utils.redact
-import com.swooby.alfredai.common.BuildConfig
+import com.swooby.Utils.quote
+import com.swooby.Utils.redact
+import com.swooby.openai.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch

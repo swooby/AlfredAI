@@ -22,7 +22,9 @@ dependencyResolutionManagement {
 
 rootProject.name = "AlfredAI"
 include(":mobile")
-include(":shared")
-include(":wear")
+include(":openai")
 include(":openai-kotlin-client")
 project(":openai-kotlin-client").projectDir = file("./openai-openapi-kotlin/lib")
+include(":shared")
+include(":utils")
+include(":wear")

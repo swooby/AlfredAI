@@ -14,7 +14,7 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import androidx.core.graphics.drawable.IconCompat
-import com.swooby.alfredai.Utils.showToast
+import com.swooby.Utils.showToast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

@@ -1,18 +1,16 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
 }
 
 android {
-    namespace = "com.swooby.alfredai.common"
+    namespace = "com.swooby.utils"
     compileSdk = 35
 
     defaultConfig {
         minSdk = 34
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
         consumerProguardFiles("consumer-rules.pro")
     }
 
@@ -34,23 +32,14 @@ android {
     }
     buildFeatures {
         buildConfig = true
-        compose = true
     }
 }
 
 dependencies {
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.wear.phone.interactions)
-    implementation(libs.material)
-    implementation(libs.play.services.wearable)
-
+    implementation(libs.androidx.core.ktx)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
 
-    // Used by FunctionsManager; candidate to move to project `openai`
-    implementation(project(":openai-kotlin-client"))
-
-    api(project(":utils"))
+    implementation(libs.kotlin.reflect)
 }

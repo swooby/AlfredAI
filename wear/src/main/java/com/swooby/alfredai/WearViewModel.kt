@@ -9,8 +9,8 @@ import com.google.android.gms.wearable.DataItem
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.PutDataRequest
 import com.google.android.gms.wearable.Wearable
-import com.swooby.alfredai.Utils.playAudioResourceOnce
-import com.swooby.alfredai.Utils.quote
+import com.swooby.Utils.playAudioResourceOnce
+import com.swooby.Utils.quote
 
 class WearViewModel(application: Application) :
     SharedViewModel(application)

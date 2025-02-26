@@ -76,6 +76,7 @@ dependencies {
 
     implementation(libs.jsoup)
 
+    implementation(project(":openai"))
     implementation(project(":shared"))
 
     implementation(libs.twilio.audioswitch)

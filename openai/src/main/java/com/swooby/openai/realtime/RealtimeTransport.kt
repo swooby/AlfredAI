@@ -1,4 +1,4 @@
-package com.swooby.alfredai.openai.realtime
+package com.swooby.openai.realtime
 
 import com.openai.infrastructure.ApiClient
 import com.openai.infrastructure.Serializer
