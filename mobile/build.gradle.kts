@@ -78,6 +78,7 @@ dependencies {
 
     implementation(project(":openai"))
     implementation(project(":shared"))
+    implementation(project(":smartfoo-android-lib-core"))
 
     implementation(libs.twilio.audioswitch)
 }
