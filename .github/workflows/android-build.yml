@@ -12,51 +12,49 @@ on:
     #branches:
     #  - 'release/**'
 
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+    # Defining `workflow_dispatch` allows you to run this workflow manually from the Actions tab
 
 jobs:
   build:
-
+    name: Build Android
     runs-on: ubuntu-latest
-
+    env:
+      JAVA_VERSION: 21
     steps:
       - name: Checkout code and submodule(s)
         uses: actions/checkout@v4
         with:
           submodules: 'recursive'
 
-      # Set Current Date As Env Variable
       - name: Set current date as env variable
         run: echo "date_today=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
 
-      # Set Repository Name As Env Variable
       - name: Set repository name as env variable
         run: echo "repository_name=$(echo '${{ github.repository }}' | awk -F '/' '{print $2}')" >> $GITHUB_ENV
 
-      - name: Set Up JDK
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4
+        env:
+          # Increase GitHub rate limits, per:
+          # https://github.com/actions/setup-java/blob/main/docs/advanced-usage.md#jetbrains
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          distribution: 'zulu' # See 'Supported distributions' for available options
-          java-version: '21'
-          cache: 'gradle'
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'jetbrains'
+          cache: gradle
 
-      - name: Change wrapper permissions
-        run: chmod +x ./gradlew
+      - run: chmod +x ./gradlew
 
-      # Run Build Project
       - name: Build gradle project
         run: ./gradlew build
 
-      # Run Tests Build
       - name: Run gradle tests
         run: ./gradlew test
 
-      # Create APK Debug
       - name: Build apk debug project (APK) - ${{ env.main_project_module }} module
         run: ./gradlew assembleDebug
 
-      # Create APK Release
       - name: Build apk release project (APK) - ${{ env.main_project_module }} module
         run: ./gradlew assembleRelease
 

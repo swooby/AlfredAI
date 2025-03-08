@@ -1,3 +1,6 @@
 [submodule "openai-openapi-kotlin"]
 	path = openai-openapi-kotlin
 	url = https://github.com/swooby/openai-openapi-kotlin.git
+[submodule "smartfoo"]
+	path = smartfoo
+	url = https://github.com/SmartFoo/smartfoo.git

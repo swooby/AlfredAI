@@ -42,11 +42,11 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.wear.phone.interactions)
-    implementation(libs.material)
+    implementation(libs.google.android.material)
     implementation(libs.play.services.wearable)
 
     testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
 
     // Used by FunctionsManager; candidate to move to project `openai`

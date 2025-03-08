@@ -177,7 +177,7 @@ class MobileForegroundService : Service() {
                     Instead of fighting all of this, I have chosen to implement the foreground service as:
                     * `<service ... foregroundServiceType="specialUse" ... >`
                     * `<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />`
-                    This works  perfectly fine for non-PlayStore apps.
+                    This works perfectly fine for non-PlayStore apps.
                     If this app ever gets on the PlayStore then they can review it and accept or reject
                     its specialUse case then.
                     If they reject then I could always try the observable `MutableStateFlow` option.
