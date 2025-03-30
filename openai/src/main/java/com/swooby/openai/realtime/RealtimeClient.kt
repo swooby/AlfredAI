@@ -160,9 +160,9 @@ class RealtimeClient(
         return transport.connect()
     }
 
-    override fun disconnect() {
+    override fun disconnect(error: Exception?) {
         isCancelingResponse = false
-        transport.disconnect()
+        transport.disconnect(error)
     }
 
     private fun onConnected() {

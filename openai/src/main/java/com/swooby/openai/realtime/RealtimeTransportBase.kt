@@ -134,15 +134,13 @@ abstract class RealtimeTransportBase(
                 realtime.createRealtimeSession(sessionConfig)
             } catch (exception: Exception) {
                 log.e("connect: exception=$exception")
-                notifyError(exception)
-                disconnect()
+                disconnect(exception)
                 null
             }
             ephemeralApiKey = realtimeSessionCreateResponse?.clientSecret?.value
             log.d("connect: ephemeralApiKey=${quote(redact(ephemeralApiKey, dangerousNullOK = true))}")
             if (ephemeralApiKey == null) {
-                notifyError(ClientException("No Ephemeral API Key In Response"))
-                disconnect()
+                disconnect(ClientException("No Ephemeral API Key In Response"))
                 return null
             }
 
@@ -169,11 +167,14 @@ abstract class RealtimeTransportBase(
 
     protected abstract fun connectInternal(ephemeralApiKey: String): String?
 
-    override fun disconnect() {
-        log.d("+disconnect()")
+    override fun disconnect(error: Exception?) {
+        log.d("+disconnect($error)")
         ApiClient.accessToken = null
+        if (error != null) {
+            notifyError(error)
+        }
         disconnectInternal()
-        log.d("-disconnect()")
+        log.d("-disconnect($error)")
     }
 
     protected abstract fun disconnectInternal()

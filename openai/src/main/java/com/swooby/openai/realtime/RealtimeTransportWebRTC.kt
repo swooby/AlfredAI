@@ -3,6 +3,7 @@ package com.swooby.openai.realtime
 import android.content.Context
 import com.openai.apis.RealtimeApi
 import com.openai.infrastructure.ApiClient
+import com.openai.infrastructure.ClientException
 import com.openai.infrastructure.MultiValueMap
 import com.openai.infrastructure.RequestConfig
 import com.openai.infrastructure.RequestMethod
@@ -155,14 +156,18 @@ class RealtimeTransportWebRTC(
                                     return
                                 }
                             }
-
                             PeerConnection.IceConnectionState.DISCONNECTED,
-                            PeerConnection.IceConnectionState.FAILED,
+                            PeerConnection.IceConnectionState.FAILED -> {
+                                // unsolicited disconnect
+                                disconnect(ClientException("IceConnectionState.${newState.name}"))
+                            }
                             PeerConnection.IceConnectionState.CLOSED -> {
+                                // solicited disconnect
                                 disconnect()
                             }
-
-                            else -> {}
+                            else -> {
+                                // ignore
+                            }
                         }
                     }
 

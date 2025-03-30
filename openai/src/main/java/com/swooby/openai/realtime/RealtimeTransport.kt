@@ -65,7 +65,7 @@ interface RealtimeTransport {
     fun connect(): String?
 
     /** Disconnect the transport. */
-    fun disconnect()
+    fun disconnect(error: Exception? = null)
 
     /** Essentially unmute or mute the speaker */
     fun setLocalAudioTrackSpeakerEnabled(enabled: Boolean)
