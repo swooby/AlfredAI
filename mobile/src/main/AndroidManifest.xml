@@ -4,6 +4,11 @@
     >
 
     <!--
+    Required by `org.webrtc.NetworkMonitor`
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
     For https://github.com/twilio/audioswitch/ per:
     https://github.com/twilio/audioswitch/blob/master/README.md#bluetooth-support
     -->
