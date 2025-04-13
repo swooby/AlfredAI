@@ -30,8 +30,8 @@ import com.openai.models.RealtimeServerEventResponseTextDone
 import com.openai.models.RealtimeServerEventSessionCreated
 import com.openai.models.RealtimeServerEventSessionUpdated
 import com.openai.models.RealtimeSessionCreateRequest
-import com.swooby.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStarted
-import com.swooby.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
+import com.swooby.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferStarted
+import com.swooby.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferStopped
 
 interface RealtimeProtocol {
     fun dataSendSessionUpdate(sessionConfig: RealtimeSessionCreateRequest): Boolean
@@ -56,8 +56,8 @@ interface RealtimeProtocolListener {
     fun onServerEventInputAudioBufferCommitted(message: RealtimeServerEventInputAudioBufferCommitted)
     fun onServerEventInputAudioBufferSpeechStarted(message: RealtimeServerEventInputAudioBufferSpeechStarted)
     fun onServerEventInputAudioBufferSpeechStopped(message: RealtimeServerEventInputAudioBufferSpeechStopped)
-    fun onServerEventOutputAudioBufferAudioStarted(message: ServerEventOutputAudioBufferAudioStarted)
-    fun onServerEventOutputAudioBufferAudioStopped(message: ServerEventOutputAudioBufferAudioStopped)
+    fun onServerEventOutputAudioBufferStarted(message: ServerEventOutputAudioBufferStarted)
+    fun onServerEventOutputAudioBufferStopped(message: ServerEventOutputAudioBufferStopped)
     fun onServerEventRateLimitsUpdated(message: RealtimeServerEventRateLimitsUpdated)
     fun onServerEventResponseAudioDelta(message: RealtimeServerEventResponseAudioDelta)
     fun onServerEventResponseAudioDone(message: RealtimeServerEventResponseAudioDone)

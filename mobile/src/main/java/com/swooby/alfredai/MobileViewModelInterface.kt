@@ -1,8 +1,8 @@
 package com.swooby.alfredai
 
-import com.openai.models.RealtimeSessionCreateRequest
-import com.openai.models.RealtimeSessionCreateRequestInputAudioTranscription
+import com.openai.models.RealtimeSession
 import com.openai.models.RealtimeSessionInputAudioTranscription
+import com.openai.models.VoiceIdsShared
 import com.twilio.audioswitch.AudioDevice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,20 +36,20 @@ interface MobileViewModelInterface : ConnectionStateFlowInterface {
 
     val autoConnect: StateFlow<Boolean>
     val apiKey: StateFlow<String>
-    val model: StateFlow<RealtimeSessionCreateRequest.Model>
+    val model: StateFlow<RealtimeSession.Model>
     val instructions: StateFlow<String>
-    val voice: StateFlow<RealtimeSessionCreateRequest.Voice>
-    val inputAudioTranscription: StateFlow<RealtimeSessionCreateRequestInputAudioTranscription?>
+    val voice: StateFlow<VoiceIdsShared>
+    val inputAudioTranscription: StateFlow<RealtimeSessionInputAudioTranscription?>
     val temperature: StateFlow<Float>
     val maxResponseOutputTokens: StateFlow<Int>
     val isConfigured: StateFlow<Boolean>
     fun updatePreferences(
         autoConnect: Boolean,
         apiKey: String,
-        model: RealtimeSessionCreateRequest.Model,
+        model: RealtimeSession.Model,
         instructions: String,
-        voice: RealtimeSessionCreateRequest.Voice,
-        inputAudioTranscription: RealtimeSessionCreateRequestInputAudioTranscription?,
+        voice: VoiceIdsShared,
+        inputAudioTranscription: RealtimeSessionInputAudioTranscription?,
         temperature: Float,
         maxResponseOutputTokens: Int,
     )

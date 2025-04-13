@@ -8,6 +8,7 @@ import com.openai.infrastructure.MultiValueMap
 import com.openai.infrastructure.RequestConfig
 import com.openai.infrastructure.RequestMethod
 import com.openai.infrastructure.Success
+import com.openai.models.RealtimeSession
 import com.openai.models.RealtimeSessionCreateRequest
 import com.swooby.Utils.quote
 import com.swooby.Utils.redact
@@ -69,7 +70,7 @@ class RealtimeTransportWebRTC(
      * Send the offer SDP to OpenAI’s Realtime endpoint and get the answer SDP back.
      */
     private fun requestOpenAiRealtimeSdp(
-        model: RealtimeSessionCreateRequest.Model?,
+        model: RealtimeSession.Model?,
         ephemeralApiKey: String,
         offerSdp: String): String? {
 
@@ -77,7 +78,7 @@ class RealtimeTransportWebRTC(
         localVariableQuery["model"] = listOf(model.toString())
         val localVariableHeaders: MutableMap<String, String> = mutableMapOf()
         localVariableHeaders["Content-Type"] = ApiClient.SdpMediaType
-        localVariableHeaders["Accept"] = ApiClient.TextPlainMediaType
+        localVariableHeaders["Accept"] = ApiClient.TextMediaType
         localVariableHeaders["Authorization"] = "Bearer $ephemeralApiKey"
 
         val request = RequestConfig(
@@ -242,6 +243,7 @@ class RealtimeTransportWebRTC(
                     val state = dataChannel.state()
                     logDc.d("onStateChange(): dataChannel.state()=$state")
                     if (!dataChannelOpened && state == DataChannel.State.OPEN) {
+                        logDc.i("onStateChange: onDataChannelOpened()")
                         dataChannelOpened = true
                         onDataChannelOpened()
                     }
@@ -260,26 +262,21 @@ class RealtimeTransportWebRTC(
                 }
             })
 
-            val offerConstraints = MediaConstraints().apply {
-                mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
-                mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "false"))
-            }
-
             if (!verifyStillConnectingOrConnected("createDataChannel/registerObserver")) {
                 ephemeralApiKey = null
                 return null
             }
 
-            peerConnection?.createOffer(object : SdpObserver {
+            val sdpObserverOffer = object : SdpObserver {
                 override fun onCreateSuccess(desc: SessionDescription) {
-                    logPc.d("createOffer onCreateSuccessLocal($desc)")
-                    peerConnection?.setLocalDescription(object : SdpObserver {
+                    logPc.d("sdpObserverOffer onCreateSuccess($desc)")
+                    val sdpObserverLocal = object : SdpObserver {
                         override fun onCreateSuccess(sdp: SessionDescription?) {
-                            logPc.d("localDescription onCreateSuccess($sdp)")
+                            logPc.d("sdpObserverLocal onCreateSuccess($sdp)")
                         }
 
                         override fun onSetSuccess() {
-                            logPc.d("localDescription setSuccess()")
+                            logPc.d("sdpObserverLocal setSuccess()")
                             CoroutineScope(Dispatchers.IO).launch {
 
                                 val answerSdp = requestOpenAiRealtimeSdp(
@@ -295,53 +292,60 @@ class RealtimeTransportWebRTC(
                                 ApiClient.accessToken = null
 
                                 withContext(Dispatchers.Main) {
+                                    val sdpObserverRemote = object : SdpObserver {
+                                        override fun onCreateSuccess(sdp: SessionDescription?) {
+                                            logPc.d("sdpObserverRemote onCreateSuccess($sdp)")
+                                        }
+
+                                        override fun onSetSuccess() {
+                                            logPc.d("sdpObserverRemote setSuccess()")
+                                        }
+
+                                        override fun onCreateFailure(error: String?) {
+                                            logPc.e("sdpObserverRemote onCreateFailure($error)")
+                                        }
+
+                                        override fun onSetFailure(error: String) {
+                                            logPc.e("sdpObserverRemote onSetFailure($error)")
+                                        }
+                                    }
                                     val answerDescription = SessionDescription(
                                         SessionDescription.Type.ANSWER,
                                         answerSdp
                                     )
-                                    peerConnection?.setRemoteDescription(object : SdpObserver {
-                                        override fun onCreateSuccess(sdp: SessionDescription?) {
-                                            logPc.d("remoteDescription onCreateSuccess($sdp)")
-                                        }
-
-                                        override fun onSetSuccess() {
-                                            logPc.d("remoteDescription setSuccess()")
-                                        }
-
-                                        override fun onCreateFailure(error: String?) {
-                                            logPc.e("remoteDescription onCreateFailure($error)")
-                                        }
-
-                                        override fun onSetFailure(error: String) {
-                                            logPc.e("remoteDescription onSetFailure($error)")
-                                        }
-                                    }, answerDescription)
+                                    peerConnection?.setRemoteDescription(sdpObserverRemote, answerDescription)
                                 }
                             }
                         }
 
                         override fun onCreateFailure(error: String?) {
-                            logPc.e("localDescription onCreateFailure($error)")
+                            logPc.e("sdpObserverLocal onCreateFailure($error)")
                         }
 
                         override fun onSetFailure(error: String) {
-                            logPc.e("localDescription onSetFailure($error)")
+                            logPc.e("sdpObserverLocal onSetFailure($error)")
                         }
-                    }, desc)
+                    }
+                    peerConnection?.setLocalDescription(sdpObserverLocal, desc)
                 }
 
                 override fun onSetSuccess() {
-                    logPc.d("createOffer setSuccess()")
+                    logPc.d("sdpObserverOffer setSuccess()")
                 }
 
                 override fun onCreateFailure(error: String) {
-                    logPc.e("createOffer onCreateFailure($error)")
+                    logPc.e("sdpObserverOffer onCreateFailure(${quote(error)}")
                 }
 
                 override fun onSetFailure(error: String?) {
-                    logPc.e("createOffer onSetFailure($error)")
+                    logPc.e("sdpObserverOffer onSetFailure(${quote(error)}")
                 }
-            }, offerConstraints)
+            }
+            val offerConstraints = MediaConstraints().apply {
+                mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
+                mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "false"))
+            }
+            peerConnection?.createOffer(sdpObserverOffer, offerConstraints)
         } finally {
             log.d("-connectInternal(ephemeralApiKey=${quote(redact(ephemeralApiKey))})")
         }

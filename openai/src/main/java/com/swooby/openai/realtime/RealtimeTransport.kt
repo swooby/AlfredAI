@@ -8,9 +8,7 @@ enum class TransportType {
 }
 
 /**
- * Callbacks from the Transport layer.
- * These mirror some of what your RealtimeClientListener does now,
- * but at a lower level (just raw binary/text messages + basic “connected”/“error”).
+ * Basic connected, error, and binary/text message callbacks/events from the Transport layer.
  */
 interface RealtimeTransportListener {
     /**
@@ -34,7 +32,7 @@ interface RealtimeTransportListener {
     fun onError(error: Exception)
 
     /**
-     *
+     * Intended to be used to send a SessionUpdate after a connection is established.
      */
     fun onDataChannelOpened()
 
@@ -82,7 +80,7 @@ interface RealtimeTransport {
 
 inline fun <reified T> RealtimeTransport.dataSend(content: T, mediaType: String? = ApiClient.JsonMediaType): Boolean {
     when {
-        mediaType == null || (mediaType.startsWith("application/") && mediaType.endsWith("json")) ->
+        mediaType == null || mediaType == ApiClient.JsonMediaType ->
             return dataSendText(Serializer.serialize<T>(content))
         else ->
             throw UnsupportedOperationException("send currently only supports JSON body.")

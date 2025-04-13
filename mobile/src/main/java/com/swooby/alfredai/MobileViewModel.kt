@@ -60,9 +60,10 @@ import com.openai.models.RealtimeServerEventResponseTextDelta
 import com.openai.models.RealtimeServerEventResponseTextDone
 import com.openai.models.RealtimeServerEventSessionCreated
 import com.openai.models.RealtimeServerEventSessionUpdated
+import com.openai.models.RealtimeSession
 import com.openai.models.RealtimeSessionCreateRequest
-import com.openai.models.RealtimeSessionCreateRequestInputAudioTranscription
 import com.openai.models.RealtimeSessionInputAudioTranscription
+import com.openai.models.VoiceIdsShared
 import com.swooby.alfredai.PushToTalkPreferences.Companion.getMaxResponseOutputTokens
 import com.swooby.Utils.audioDeviceInfoToString
 import com.swooby.Utils.audioManagerScoStateToString
@@ -73,7 +74,7 @@ import com.swooby.Utils.redact
 import com.swooby.Utils.showToast
 import com.swooby.openai.realtime.RealtimeClient
 import com.swooby.openai.realtime.RealtimeClient.RealtimeClientListener
-import com.swooby.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferAudioStopped
+import com.swooby.openai.realtime.RealtimeClient.ServerEventOutputAudioBufferStopped
 import com.swooby.openai.realtime.TransportType
 import com.twilio.audioswitch.AudioDevice
 import com.twilio.audioswitch.AudioDevice.BluetoothHeadset
@@ -364,10 +365,10 @@ class MobileViewModel(application: Application) :
     override fun updatePreferences(
         autoConnect: Boolean,
         apiKey: String,
-        model: RealtimeSessionCreateRequest.Model,
+        model: RealtimeSession.Model,
         instructions: String,
-        voice: RealtimeSessionCreateRequest.Voice,
-        inputAudioTranscription: RealtimeSessionCreateRequestInputAudioTranscription?,
+        voice: VoiceIdsShared,
+        inputAudioTranscription: RealtimeSessionInputAudioTranscription?,
         temperature: Float,
         maxResponseOutputTokens: Int,
     ) {
@@ -1363,15 +1364,15 @@ class MobileViewModel(application: Application) :
             }
         }
 
-        override fun onServerEventOutputAudioBufferAudioStarted(message: RealtimeClient.ServerEventOutputAudioBufferAudioStarted) {
-            Log.d(TAG, "onServerEventOutputAudioBufferAudioStarted($message)")
+        override fun onServerEventOutputAudioBufferStarted(message: RealtimeClient.ServerEventOutputAudioBufferStarted) {
+            Log.d(TAG, "onServerEventOutputAudioBufferStarted($message)")
             listeners.forEach {
-                it.onServerEventOutputAudioBufferAudioStarted(message)
+                it.onServerEventOutputAudioBufferStarted(message)
             }
         }
 
-        override fun onServerEventOutputAudioBufferAudioStopped(message: ServerEventOutputAudioBufferAudioStopped) {
-            Log.d(TAG, "onServerEventOutputAudioBufferAudioStopped($message)")
+        override fun onServerEventOutputAudioBufferStopped(message: ServerEventOutputAudioBufferStopped) {
+            Log.d(TAG, "onServerEventOutputAudioBufferStopped($message)")
             if (_isCancelingResponse.value) {
                 _isCancelingResponse.value = false
                 showToast(
@@ -1381,9 +1382,9 @@ class MobileViewModel(application: Application) :
                 )
             }
             listeners.forEach {
-                it.onServerEventOutputAudioBufferAudioStopped(message)
+                it.onServerEventOutputAudioBufferStopped(message)
             }
-            conversationCurrentItemSet("onServerEventOutputAudioBufferAudioStopped", null)
+            conversationCurrentItemSet("onServerEventOutputAudioBufferStopped", null)
         }
 
         override fun onServerEventRateLimitsUpdated(message: RealtimeServerEventRateLimitsUpdated) {

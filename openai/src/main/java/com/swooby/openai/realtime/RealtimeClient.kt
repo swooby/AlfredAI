@@ -81,10 +81,10 @@ class RealtimeClient(
         private val debugDataChannelText = BuildConfig.DEBUG && false
 
         val httpLoggingClient = OkHttpClient.Builder()
-                .addInterceptor(HttpLoggingInterceptor().apply {
-                    level = HttpLoggingInterceptor.Level.BODY
-                })
-                .build()
+            .addInterceptor(HttpLoggingInterceptor().apply {
+                level = HttpLoggingInterceptor.Level.BODY
+            })
+            .build()
 
         private const val AUDIO_DRAIN_MS = 200L
     }
@@ -523,17 +523,23 @@ class RealtimeClient(
                     }
                 }
 
-                "output_audio_buffer.audio_started" -> {
-                    log.w("onDataChannelText: undocumented `output_audio_buffer.audio_started`")
-                    Serializer.deserialize<ServerEventOutputAudioBufferAudioStarted>(message)?.also {
-                        notifyServerEventOutputAudioBufferAudioStarted(it)
+                // https://platform.openai.com/docs/api-reference/realtime-server-events/input_audio_buffer
+                "output_audio_buffer.audio_started", // circa ??
+                "output_audio_buffer.started", // circa 2025/02/05
+                     -> {
+                    log.w("onDataChannelText: undocumented `${type}`")
+                    Serializer.deserialize<ServerEventOutputAudioBufferStarted>(message)?.also {
+                        notifyServerEventOutputAudioBufferStarted(it)
                     }
                 }
 
-                "output_audio_buffer.audio_stopped" -> {
-                    log.w("onDataChannelText: undocumented `output_audio_buffer.audio_stopped`")
-                    Serializer.deserialize<ServerEventOutputAudioBufferAudioStopped>(message)?.also {
-                        notifyServerEventOutputAudioBufferAudioStopped(it)
+                // https://platform.openai.com/docs/api-reference/realtime-server-events/input_audio_buffer
+                "output_audio_buffer.audio_stopped", // circa ??
+                "output_audio_buffer.stopped", // circa 2025/02/05
+                    -> {
+                    log.w("onDataChannelText: undocumented `${type}`")
+                    Serializer.deserialize<ServerEventOutputAudioBufferStopped>(message)?.also {
+                        notifyServerEventOutputAudioBufferStopped(it)
                     }
                 }
 
@@ -579,6 +585,7 @@ class RealtimeClient(
     }
 
     private fun notifyServerEventConversationItemTruncated(message: RealtimeServerEventConversationItemTruncated) {
+        log.d("notifyServerEventConversationItemTruncated($message)")
         protocolListeners.forEach {
             it.onServerEventConversationItemTruncated(message)
         }
@@ -641,16 +648,16 @@ class RealtimeClient(
      * Example:
      * ```
      * {
-     *   "type":"output_audio_buffer.audio_started",
+     *   "type":"output_audio_buffer.started",
      *   "event_id":"event_51bb3e4b2b9a45b5",
      *   "response_id":"resp_AvyUM8tYkYjvWaXhkqcBJ"
      * }
      * ```
      */
     @Suppress("PropertyName")
-    data class ServerEventOutputAudioBufferAudioStarted(
+    data class ServerEventOutputAudioBufferStarted(
         /**
-         * The event type, must be "output_audio_buffer.audio_started".
+         * The event type, must be "output_audio_buffer.started".
          */
         val type: String,
         /**
@@ -663,9 +670,10 @@ class RealtimeClient(
         val response_id: String,
     )
 
-    private fun notifyServerEventOutputAudioBufferAudioStarted(message: ServerEventOutputAudioBufferAudioStarted) {
+    private fun notifyServerEventOutputAudioBufferStarted(message: ServerEventOutputAudioBufferStarted) {
+        log.d("notifyServerEventOutputAudioBufferStarted($message)")
         protocolListeners.forEach {
-            it.onServerEventOutputAudioBufferAudioStarted(message)
+            it.onServerEventOutputAudioBufferStarted(message)
         }
     }
 
@@ -673,16 +681,16 @@ class RealtimeClient(
      * Example:
      * ```
      * {
-     *   "type":"output_audio_buffer.audio_stopped",
+     *   "type":"output_audio_buffer.stopped",
      *   "event_id":"event_e69be18ad4f34b01",
      *   "response_id":"resp_Asg4GBgYXDJXSLfXu6cWO"
      * }
      * ```
      */
     @Suppress("PropertyName")
-    data class ServerEventOutputAudioBufferAudioStopped(
+    data class ServerEventOutputAudioBufferStopped(
         /**
-         * The event type, must be "output_audio_buffer.audio_stopped".
+         * The event type, must be "output_audio_buffer.stopped".
          */
         val type: String,
         /**
@@ -695,21 +703,20 @@ class RealtimeClient(
         val response_id: String,
     )
 
-    private fun notifyServerEventOutputAudioBufferAudioStopped(message: ServerEventOutputAudioBufferAudioStopped) {
+    private fun notifyServerEventOutputAudioBufferStopped(message: ServerEventOutputAudioBufferStopped) {
+        log.d("notifyServerEventOutputAudioBufferStopped($message)")
         if (isCancelingResponse) {
             isCancelingResponse = false
             CoroutineScope(Dispatchers.IO).launch {
                 delay(AUDIO_DRAIN_MS) // delay a bit to allow any already buffered audio to finish playing before unmuting
                 setLocalAudioTrackSpeakerEnabled(true)
                 protocolListeners.forEach {
-                    it.onServerEventOutputAudioBufferAudioStopped(message,
-                    )
+                    it.onServerEventOutputAudioBufferStopped(message)
                 }
             }
         } else {
             protocolListeners.forEach {
-                it.onServerEventOutputAudioBufferAudioStopped(message,
-                )
+                it.onServerEventOutputAudioBufferStopped(message)
             }
         }
     }
@@ -727,6 +734,7 @@ class RealtimeClient(
     }
 
     private fun notifyServerEventResponseAudioDone(message: RealtimeServerEventResponseAudioDone) {
+        log.d("notifyServerEventResponseAudioDone($message)")
         protocolListeners.forEach {
             it.onServerEventResponseAudioDone(message)
         }

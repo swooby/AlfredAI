@@ -2,9 +2,9 @@ package com.swooby.alfredai
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.openai.models.RealtimeSessionCreateRequest
-import com.openai.models.RealtimeSessionCreateRequestInputAudioTranscription
+import com.openai.models.RealtimeSession
 import com.openai.models.RealtimeSessionInputAudioTranscription
+import com.openai.models.VoiceIdsShared
 import com.twilio.audioswitch.AudioDevice
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,13 +20,13 @@ class MobileViewModelPreview : ViewModel(), MobileViewModelInterface {
         get() = MutableStateFlow(PushToTalkPreferences.autoConnectDefault)
     override val apiKey: StateFlow<String>
         get() = MutableStateFlow(PushToTalkPreferences.apiKeyDefault)
-    override val model: StateFlow<RealtimeSessionCreateRequest.Model>
+    override val model: StateFlow<RealtimeSession.Model>
         get() = MutableStateFlow(PushToTalkPreferences.modelDefault)
     override val instructions: StateFlow<String>
         get() = MutableStateFlow(PushToTalkPreferences.instructionsDefault)
-    override val voice: StateFlow<RealtimeSessionCreateRequest.Voice>
+    override val voice: StateFlow<VoiceIdsShared>
         get() = MutableStateFlow(PushToTalkPreferences.voiceDefault)
-    override val inputAudioTranscription: StateFlow<RealtimeSessionCreateRequestInputAudioTranscription?>
+    override val inputAudioTranscription: StateFlow<RealtimeSessionInputAudioTranscription?>
         get() = MutableStateFlow(PushToTalkPreferences.inputAudioTranscriptionDefault)
     override val temperature: StateFlow<Float>
         get() = MutableStateFlow(PushToTalkPreferences.temperatureDefault)
@@ -37,10 +37,10 @@ class MobileViewModelPreview : ViewModel(), MobileViewModelInterface {
     override fun updatePreferences(
         autoConnect: Boolean,
         apiKey: String,
-        model: RealtimeSessionCreateRequest.Model,
+        model: RealtimeSession.Model,
         instructions: String,
-        voice: RealtimeSessionCreateRequest.Voice,
-        inputAudioTranscription: RealtimeSessionCreateRequestInputAudioTranscription?,
+        voice: VoiceIdsShared,
+        inputAudioTranscription: RealtimeSessionInputAudioTranscription?,
         temperature: Float,
         maxResponseOutputTokens: Int
     ) = Unit
