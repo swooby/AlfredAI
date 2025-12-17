@@ -60,9 +60,11 @@ import com.swooby.alfredai.ui.theme.AlfredAITheme
 
 class PushToTalkPreferences(context: Context) {
     companion object {
-        const val autoConnectDefault = true
+        const val AUTO_CONNECT_DEFAULT = true
 
-        const val apiKeyDefault = BuildConfig.DANGEROUS_OPENAI_API_KEY
+        private const val CRYPTO_KEYSTORE_ALIAS = "AlfredAiKeyAlias"
+
+        const val OPENAI_API_KEY_DEFAULT = BuildConfig.DANGEROUS_OPENAI_API_KEY
 
         val modelDefault = RealtimeSession.Model.`gpt-4o-mini-realtime-preview`
 
@@ -171,21 +173,26 @@ class PushToTalkPreferences(context: Context) {
     //
 
     var autoConnect: Boolean
-        get() = getBoolean("autoConnect", autoConnectDefault)
+        get() = getBoolean("autoConnect", AUTO_CONNECT_DEFAULT)
         set(value) = putBoolean("autoConnect", value)
 
+    /**
+     * This value is encrypted with [Crypto.hardwareEncrypt]
+     * and decrypted with [Crypto.hardwareDecrypt]
+     * using [CRYPTO_KEYSTORE_ALIAS].
+     */
     var apiKey: String
         get() {
             var apiKeyEncrypted = getString("apiKey", "")
             if (apiKeyEncrypted == "") {
-                if (apiKeyDefault.isNotBlank()) {
-                    apiKeyEncrypted = Crypto.hardwareEncrypt(BuildConfig.DANGEROUS_OPENAI_API_KEY)
+                if (OPENAI_API_KEY_DEFAULT.isNotBlank()) {
+                    apiKeyEncrypted = Crypto.hardwareEncrypt(CRYPTO_KEYSTORE_ALIAS, OPENAI_API_KEY_DEFAULT)
                 }
             }
-            return Crypto.hardwareDecrypt(apiKeyEncrypted)
+            return Crypto.hardwareDecrypt(CRYPTO_KEYSTORE_ALIAS, apiKeyEncrypted)
         }
         set(value) {
-            val apiKeyEncrypted = Crypto.hardwareEncrypt(value)
+            val apiKeyEncrypted = Crypto.hardwareEncrypt(CRYPTO_KEYSTORE_ALIAS, value)
             putString("apiKey", apiKeyEncrypted)
         }
 

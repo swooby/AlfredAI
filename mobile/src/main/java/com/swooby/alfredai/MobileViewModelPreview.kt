@@ -16,10 +16,11 @@ class MobileViewModelPreview : ViewModel(), MobileViewModelInterface {
         get() = MutableStateFlow(true)
     override fun updatePermissionsState() = Unit
 
+    @Suppress("KotlinConstantConditions")
     override val autoConnect: StateFlow<Boolean>
-        get() = MutableStateFlow(PushToTalkPreferences.autoConnectDefault)
+        get() = MutableStateFlow(PushToTalkPreferences.AUTO_CONNECT_DEFAULT)
     override val apiKey: StateFlow<String>
-        get() = MutableStateFlow(PushToTalkPreferences.apiKeyDefault)
+        get() = MutableStateFlow(PushToTalkPreferences.OPENAI_API_KEY_DEFAULT)
     override val model: StateFlow<RealtimeSession.Model>
         get() = MutableStateFlow(PushToTalkPreferences.modelDefault)
     override val instructions: StateFlow<String>
